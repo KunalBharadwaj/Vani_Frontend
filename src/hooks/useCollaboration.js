@@ -15,7 +15,7 @@ export function useCollaboration(roomId, token) {
     
     if (!connection) {
       const doc = new Y.Doc();
-      const ws = new WebSocket(`ws://vani-backend-mjsl.onrender.com/?token=${token}`);
+      const ws = new WebSocket(`wss://vani-backend-mjsl.onrender.com/?token=${token}`);
       ws.binaryType = "arraybuffer";
       
       connection = {
