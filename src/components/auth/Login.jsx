@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 
 export const Login = () => {
   const handleLogin = () => {
-    window.location.href = "http://localhost:3001/auth/google";
+    window.location.href = "https://vani-backend-mjsl.onrender.com//auth/google";
   };
 
   return (
