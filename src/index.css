@@ -1,0 +1,235 @@
+/* Using system fonts - no internet required */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 14% 96%;
+    --foreground: 220 20% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    --primary: 174 72% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 90%;
+    --secondary-foreground: 220 20% 20%;
+
+    --muted: 220 14% 92%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 174 72% 40%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 14% 85%;
+    --input: 220 14% 85%;
+    --ring: 174 72% 40%;
+
+    --radius: 0.5rem;
+
+    /* Custom paint app tokens */
+    --toolbar-bg: 220 20% 18%;
+    --toolbar-foreground: 220 14% 96%;
+    --toolbar-hover: 220 20% 25%;
+    --toolbar-active: 174 72% 40%;
+    --canvas-bg: 0 0% 100%;
+    --canvas-border: 220 14% 80%;
+    --workspace-bg: 220 14% 92%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 20% 10%;
+    --foreground: 220 14% 96%;
+
+    --card: 220 20% 14%;
+    --card-foreground: 220 14% 96%;
+
+    --popover: 220 20% 14%;
+    --popover-foreground: 220 14% 96%;
+
+    --primary: 174 72% 45%;
+    --primary-foreground: 220 20% 10%;
+
+    --secondary: 220 20% 20%;
+    --secondary-foreground: 220 14% 96%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 14% 60%;
+
+    --accent: 174 72% 45%;
+    --accent-foreground: 220 20% 10%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 220 14% 96%;
+
+    --border: 220 20% 22%;
+    --input: 220 20% 22%;
+    --ring: 174 72% 45%;
+
+    --toolbar-bg: 220 20% 12%;
+    --toolbar-foreground: 220 14% 96%;
+    --toolbar-hover: 220 20% 18%;
+    --toolbar-active: 174 72% 45%;
+    --canvas-bg: 220 20% 8%;
+    --canvas-border: 220 20% 25%;
+    --workspace-bg: 220 20% 6%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+}
+
+@layer utilities {
+  .tool-button {
+    @apply flex items-center justify-center w-10 h-10 rounded-md transition-colors;
+    @apply bg-transparent text-toolbar-foreground hover:bg-toolbar-hover;
+  }
+
+  .tool-button-active {
+    @apply bg-toolbar-active text-accent-foreground;
+  }
+}
+
+/* PDF Viewer Styles */
+.pdf-document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.react-pdf__Page {
+  max-width: 100%;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+  margin: 0;
+}
+
+.react-pdf__Page__canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+.react-pdf__Page__textContent {
+  max-width: 100%;
+}
+
+.react-pdf__Page__annotations {
+  max-width: 100%;
+}
+/* PDF Text Layer - required by react-pdf for text selection */
+.react-pdf__Page__textContent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0.2;
+  line-height: 1;
+  font-weight: bold;
+  font-size: 10px;
+}
+
+.react-pdf__Page__textContent > span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-transform: scaleY(1);
+  -moz-transform: scaleY(1);
+  transform: scaleY(1);
+}
+
+.react-pdf__Page__textContent ::selection {
+  background: rgba(0, 123, 255, 0.3);
+}
+
+.react-pdf__Page__textContent ::-moz-selection {
+  background: rgba(0, 123, 255, 0.3);
+}
+
+/* Standard textLayer class for react-pdf */
+.textLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.textLayer > span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 123, 255, 0.3);
+}
+
+.textLayer ::-moz-selection {
+  background: rgba(0, 123, 255, 0.3);
+}
+
+/* Selection highlight for PDF text */
+.textLayer .highlight {
+  margin: -1px;
+  padding: 1px;
+  background-color: rgba(255, 255, 0, 0.1);
+  border-radius: 4px;
+}
+
+.textLayer .highlight.begin {
+  border-radius: 4px 0 0 4px;
+}
+
+.textLayer .highlight.end {
+  border-radius: 0 4px 4px 0;
+}
+
+.textLayer .highlight.middle {
+  border-radius: 0;
+}
+
+.textLayer .highlight.selected {
+  background-color: rgba(0, 123, 255, 0.3);
+}
