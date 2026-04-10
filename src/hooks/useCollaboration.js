@@ -7,6 +7,8 @@ const roomConnections = new Map();
 export function useCollaboration(roomId, token) {
   const [ydoc, setYdoc] = useState(null);
   const [status, setStatus] = useState("disconnected");
+  const [roomState, setRoomState] = useState({ hostId: null, ownerId: null, users: [] });
+  const wsRef = useRef(null);
 
   useEffect(() => {
     if (!roomId || !token) return;
@@ -15,13 +17,16 @@ export function useCollaboration(roomId, token) {
     
     if (!connection) {
       const doc = new Y.Doc();
-      const ws = new WebSocket(`wss://vani-backend-mjsl.onrender.com/?token=${token}`);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://vani-backend-mjsl.onrender.com';
+      const wsUrl = backendUrl.replace('http', 'ws');
+      const ws = new WebSocket(`${wsUrl}/?token=${token}`);
       ws.binaryType = "arraybuffer";
       
       connection = {
         doc,
         ws,
         status: "disconnected",
+        roomState: { hostId: null, ownerId: null, users: [] },
         refs: 0,
         listeners: new Set()
       };
@@ -29,20 +34,31 @@ export function useCollaboration(roomId, token) {
 
       ws.onopen = () => {
         connection.status = "connected";
-        connection.listeners.forEach(l => l("connected"));
+        connection.listeners.forEach(l => l("connected", connection.roomState));
         ws.send(JSON.stringify({ type: "join", roomId }));
       };
 
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
           const update = new Uint8Array(event.data);
-          Y.applyUpdate(doc, update);
+          Y.applyUpdate(doc, update, "remote");
+        } else if (typeof event.data === "string") {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "room:state") {
+              connection.roomState = { hostId: data.hostId, ownerId: data.ownerId, users: data.users || [] };
+              connection.listeners.forEach(l => l(connection.status, connection.roomState));
+            }
+          } catch (e) {
+            console.error("Failed to parse websocket message", e);
+          }
         }
       };
 
       ws.onclose = () => {
         connection.status = "disconnected";
-        connection.listeners.forEach(l => l("disconnected"));
+        connection.roomState = { hostId: null, ownerId: null, users: [] };
+        connection.listeners.forEach(l => l("disconnected", connection.roomState));
         roomConnections.delete(roomId);
       };
 
@@ -57,10 +73,15 @@ export function useCollaboration(roomId, token) {
     // Increment ref count
     connection.refs++;
 
+    wsRef.current = connection.ws;
     setYdoc(connection.doc);
     setStatus(connection.status);
+    setRoomState(connection.roomState);
 
-    const statusListener = (newStatus) => setStatus(newStatus);
+    const statusListener = (newStatus, newState) => {
+      setStatus(newStatus);
+      if (newState) setRoomState(newState);
+    };
     connection.listeners.add(statusListener);
 
     return () => {
@@ -80,6 +101,12 @@ export function useCollaboration(roomId, token) {
     pagesMap: ydoc ? ydoc.getMap("pages") : null, 
     pdfMap: ydoc ? ydoc.getMap("pdf") : null,
     isSynced: status === "connected", 
-    status 
+    status,
+    roomState,
+    sendWsMessage: (msg) => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify(msg));
+        }
+    }
   };
 }

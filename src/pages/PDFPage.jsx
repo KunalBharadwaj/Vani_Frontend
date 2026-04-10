@@ -8,8 +8,11 @@ const PDFPage = () => {
     console.log('PDFPage mounted - PDF Editor route active');
     // Set error handler for uncaught errors
     const handleError = (event) => {
-      console.error('Uncaught error in PDFPage:', event.error);
-      setError(event.error?.message || 'Unknown error occurred');
+      if (event.message && event.message.includes('ResizeObserver loop')) {
+        return; // Safe to ignore this benign browser-level layout notification
+      }
+      console.error('Uncaught error in PDFPage:', event.error || event.message);
+      setError(event.error?.message || event.message || 'Unknown error occurred');
     };
     
     window.addEventListener('error', handleError);

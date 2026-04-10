@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 
 export const Login = () => {
   const handleLogin = () => {
-    window.location.href = "https://vani-backend-mjsl.onrender.com/auth/google";
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vani-backend-mjsl.onrender.com";
+    window.location.href = `${backendUrl}/auth/google`;
   };
 
   return (

@@ -19,6 +19,20 @@ const queryClient = new QueryClient();
 
 // Keep both Paint and PDF pages mounted across route changes so their state
 // (canvas drawings, open files, annotations) is preserved when navigating.
+// IMPORTANT: We use visibility:hidden + position:fixed instead of display:none
+// because react-pdf canvases lose their rendered content when inside display:none
+// containers. visibility:hidden keeps them rendered at full size off-screen.
+const hiddenStyle = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  width: '100vw',
+  height: '100vh',
+  visibility: 'hidden',
+  pointerEvents: 'none',
+  zIndex: -1,
+};
+
 const PersistentPages = () => {
   const location = useLocation();
   const isPDFRoute = location.pathname === "/pdf";
@@ -27,11 +41,11 @@ const PersistentPages = () => {
   return (
     <>
       {/* Paint page - always mounted, visible on / route */}
-      <div className={isPaintRoute ? "block" : "hidden"}>
+      <div style={isPaintRoute ? undefined : hiddenStyle}>
         <Index />
       </div>
       {/* PDF page - always mounted, visible on /pdf route */}
-      <div className={isPDFRoute ? "block" : "hidden"}>
+      <div style={isPDFRoute ? undefined : hiddenStyle}>
         <PDFPage />
       </div>
     </>
