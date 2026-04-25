@@ -1,3 +1,4 @@
+// Compact navigation pill — icons only to avoid covering canvas controls.
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { FileText, PaintBucket, LogOut, Sun, Moon, Copy, Check } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
@@ -11,11 +12,6 @@ const Navigation = () => {
   const searchString = searchParams.toString() ? `?${searchParams.toString()}` : '';
   const roomId = searchParams.get('room');
 
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    window.location.href = '/';
-  };
-
   const copyRoomUrl = () => {
     navigator.clipboard.writeText(window.location.href).then(() => {
       setCopied(true);
@@ -23,64 +19,70 @@ const Navigation = () => {
     });
   };
 
-  const activeBtn = 'bg-toolbar-active text-accent-foreground';
-  const btn = 'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors text-toolbar-foreground hover:bg-toolbar-hover';
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    window.location.href = '/';
+  };
+
+  const isPaint = location.pathname === '/';
+  const isPdf = location.pathname === '/pdf';
+
+  const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-colors';
+  const activeIconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg bg-toolbar-active text-accent-foreground transition-colors';
 
   return (
-    <nav className="fixed bottom-4 right-4 z-50 flex items-center gap-1 bg-toolbar border border-toolbar-foreground/10 rounded-2xl shadow-lg p-1.5">
-      {/* Page switcher */}
+    /* Positioned bottom-right, compact icon cluster */
+    <nav
+      className="fixed bottom-3 right-3 z-50 flex items-center gap-0.5 bg-toolbar border border-toolbar-foreground/10 rounded-xl shadow-lg p-1"
+      title="Navigation"
+    >
+      {/* Paint */}
       <Link to={`/${searchString}`}>
-        <button className={`${btn} ${location.pathname === '/' ? activeBtn : ''}`}>
-          <PaintBucket className="h-4 w-4" />
-          Paint
+        <button className={isPaint ? activeIconBtn : iconBtn} title="Paint">
+          <PaintBucket className="h-3.5 w-3.5" />
         </button>
       </Link>
+
+      {/* PDF */}
       <Link to={`/pdf${searchString}`}>
-        <button className={`${btn} ${location.pathname === '/pdf' ? activeBtn : ''}`}>
-          <FileText className="h-4 w-4" />
-          PDF
+        <button className={isPdf ? activeIconBtn : iconBtn} title="PDF Editor">
+          <FileText className="h-3.5 w-3.5" />
         </button>
       </Link>
 
-      <div className="w-px h-6 bg-toolbar-foreground/20 mx-0.5" />
+      <div className="w-px h-5 bg-toolbar-foreground/15 mx-0.5" />
 
-      {/* Room ID copy */}
+      {/* Room copy */}
       {roomId && (
         <button
           onClick={copyRoomUrl}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-mono transition-colors ${
-            copied
-              ? 'bg-green-500/15 text-green-500'
-              : 'text-toolbar-foreground hover:bg-toolbar-hover'
-          }`}
-          title="Copy room URL to share"
+          className={`${iconBtn} ${copied ? 'text-green-500' : ''}`}
+          title={copied ? 'Copied!' : `Copy room link (#${roomId})`}
         >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? 'Copied!' : `#${roomId}`}
         </button>
       )}
 
-      <div className="w-px h-6 bg-toolbar-foreground/20 mx-0.5" />
-
-      {/* Theme toggle */}
+      {/* Theme */}
       <button
         onClick={toggleTheme}
-        className={`${btn} px-2.5`}
-        title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+        className={iconBtn}
+        title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
       >
         {theme === 'dark'
-          ? <Sun className="h-4 w-4 text-yellow-400" />
-          : <Moon className="h-4 w-4 text-indigo-400" />}
+          ? <Sun className="h-3.5 w-3.5 text-yellow-400" />
+          : <Moon className="h-3.5 w-3.5 text-indigo-400" />}
       </button>
 
-      <div className="w-px h-6 bg-toolbar-foreground/20 mx-0.5" />
+      <div className="w-px h-5 bg-toolbar-foreground/15 mx-0.5" />
 
+      {/* Logout */}
       <button
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
         onClick={handleLogout}
+        className={`${iconBtn} hover:text-red-400`}
+        title="Logout"
       >
-        <LogOut className="h-4 w-4" />
-        Logout
+        <LogOut className="h-3.5 w-3.5" />
       </button>
     </nav>
   );
