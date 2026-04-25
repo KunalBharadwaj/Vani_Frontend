@@ -42,13 +42,7 @@ export function useCollaboration(roomId, token) {
         if (event.data instanceof ArrayBuffer) {
           const raw = new Uint8Array(event.data);
           try {
-            if (raw[0] === 0 || raw[0] === 2) {
-              // Wrapped protocol: 0 = Normal Update, 2 = Sync Update Output
-              Y.applyUpdate(doc, raw.slice(1), "remote");
-            } else {
-              // Fallback for un-wrapped legacy protocol
               Y.applyUpdate(doc, raw, "remote");
-            }
           } catch(err) {
             console.error("Yjs update parsing error:", err);
           }
@@ -58,6 +52,10 @@ export function useCollaboration(roomId, token) {
             if (data.type === "room:state") {
               connection.roomState = { hostId: data.hostId, ownerId: data.ownerId, users: data.users || [] };
               connection.listeners.forEach(l => l(connection.status, connection.roomState));
+            } else if (data.type === "sync_step_2") {
+              // Receive full sync update via base64 encoded string
+              const buffer = Uint8Array.from(atob(data.updateBase64), c => c.charCodeAt(0));
+              Y.applyUpdate(doc, buffer, "remote");
             }
           } catch (e) {
             console.error("Failed to parse websocket message", e);
@@ -75,10 +73,7 @@ export function useCollaboration(roomId, token) {
 
       const handleUpdate = (update, origin) => {
         if (origin !== "remote" && ws.readyState === WebSocket.OPEN) {
-          const payload = new Uint8Array(update.length + 1);
-          payload[0] = 0; // 0 = Normal Update
-          payload.set(update, 1);
-          ws.send(payload);
+          ws.send(update);
         }
       };
       
@@ -87,10 +82,8 @@ export function useCollaboration(roomId, token) {
       connection.heartbeatInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           const sv = Y.encodeStateVector(doc);
-          const payload = new Uint8Array(sv.length + 1);
-          payload[0] = 1; // 1 = Sync Request Vector
-          payload.set(sv, 1);
-          ws.send(payload);
+          const svBase64 = btoa(String.fromCharCode(...sv));
+          ws.send(JSON.stringify({ type: "sync_step_1", svBase64 }));
         }
       }, 10000);
       doc.on("update", handleUpdate);
