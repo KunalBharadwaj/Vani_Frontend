@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { downloadCanvasAsPDF, downloadPagesAsPDF } from "@/services/storageService";
 import { useCollaboration } from "@/hooks/useCollaboration";
 import { useSearchParams } from "react-router-dom";
+import { Users } from "lucide-react";
+import { RoomDashboard } from "@/components/shared/RoomDashboard";
 
 export const PaintCanvas = () => {
   const canvasRef = useRef(null);
@@ -21,10 +23,15 @@ export const PaintCanvas = () => {
   const [orientation, setOrientation] = useState("portrait"); // portrait or landscape
   
   const [searchParams, setSearchParams] = useSearchParams();
-  const roomId = searchParams.get("room");
   const token = localStorage.getItem("auth_token");
-  const { pagesMap, status } = useCollaboration(roomId, token);
+  const roomId = searchParams.get("room");
+  const [showDashboard, setShowDashboard] = useState(false);
+  const { pagesMap, status, roomState, sendWsMessage } = useCollaboration(roomId, token);
 
+  const userId = token ? (function(){ try { return JSON.parse(atob(token.split('.')[1]))?.id } catch(e) { return null; } })() : null;
+  const isHost = roomState?.hostId === userId;
+
+  // Generate a room if none exists
   useEffect(() => {
     if (!roomId) {
       const newRoom = Math.random().toString(36).substring(2, 8);
@@ -944,6 +951,13 @@ export const PaintCanvas = () => {
       <header className="flex items-center justify-between px-4 py-2 bg-toolbar border-b border-toolbar-foreground/10">
         <h1 className="text-lg font-semibold text-toolbar-foreground">Chanakya</h1>
         <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setShowDashboard(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-toolbar-foreground/60 hover:bg-toolbar-foreground/10 transition-colors"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Dashboard
+          </button>
           {roomId && (
             <span className="text-xs font-mono bg-blue-500/10 text-blue-400 px-2 py-1 rounded cursor-pointer hover:bg-blue-500/20 transition-colors" title="Share this URL to collaborate" onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success("URL copied to clipboard!"); }}>
               Room: {roomId}
@@ -1045,6 +1059,14 @@ export const PaintCanvas = () => {
           <span>{isMaximized ? "Maximized" : "Normal"}</span>
         </footer>
       )}
+
+      <RoomDashboard
+        show={showDashboard}
+        onClose={() => setShowDashboard(false)}
+        roomState={roomState}
+        isHost={isHost}
+        onAssignOwner={(id) => sendWsMessage({ type: "assign_owner", targetUserId: id })}
+      />
     </div>
   );
 };

@@ -41,32 +41,19 @@ const PDFMerged = () => {
   const readonly = searchParams.get('readonly') === 'true';
   const token = localStorage.getItem('auth_token');
 
-  // Stable room ID that persists across route changes.
-  // useSearchParams reflects the CURRENT URL, which changes when the user
-  // switches to the Paint tab (/). We capture the roomId once and keep it
-  // in state so the WebSocket connection and Yjs doc survive tab switches.
-  const [roomId, setRoomId] = useState(() => searchParams.get('room'));
+  // Stable room ID mapped directly from URL
+  const roomId = searchParams.get('room');
 
   const [showHistory, setShowHistory] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [historyDocs, setHistoryDocs] = useState([]);
 
-  // Generate a room if none exists, and sync the URL (only on /pdf route)
+  // Generate a room if none exists, but only if we are actively viewing the PDF section
   useEffect(() => {
-    if (!roomId) {
+    if (!roomId && window.location.pathname === '/pdf') {
       const newRoom = Math.random().toString(36).substring(2, 8);
-      setRoomId(newRoom);
-    }
-  }, [roomId]);
-
-  // Keep URL in sync when we're on the /pdf route
-  useEffect(() => {
-    if (roomId && window.location.pathname === '/pdf') {
-      const currentUrlRoom = searchParams.get('room');
-      if (currentUrlRoom !== roomId) {
-        searchParams.set('room', roomId);
-        setSearchParams(searchParams, { replace: true });
-      }
+      searchParams.set('room', newRoom);
+      setSearchParams(searchParams, { replace: true });
     }
   }, [roomId, searchParams, setSearchParams]);
 
@@ -591,6 +578,40 @@ const PDFMerged = () => {
     </div>
   );
 
+  const dashboardModalJSX = showDashboard && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b dark:border-zinc-800">
+          <h2 className="text-lg font-semibold flex items-center gap-2"><Users className="w-5 h-5"/> Room Dashboard</h2>
+          <button onClick={() => setShowDashboard(false)} className="p-1 hover:bg-black/5 rounded text-toolbar-foreground/60 hover:text-red-500"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-4 max-h-[60vh] overflow-y-auto space-y-2">
+           {roomState?.users?.map(u => (
+              <div key={u.id} className="flex items-center justify-between p-3 border dark:border-zinc-800 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg text-sm transition-colors">
+                <div className="flex items-center gap-3">
+                   <img src={u.picture || 'https://www.gravatar.com/avatar/?d=mp'} className="w-8 h-8 rounded-full shadow-sm" />
+                   <div>
+                     <span className="block font-medium truncate max-w-[150px]" title={u.name}>{u.name}</span>
+                     <div className="flex gap-1 mt-0.5">
+                       {roomState?.hostId === u.id && <span className="text-[10px] bg-yellow-500/20 text-yellow-600 px-1.5 py-0.5 rounded border border-yellow-500/30">Host</span>}
+                       {roomState?.ownerId === u.id && <span className="text-[10px] bg-green-500/20 text-green-600 px-1.5 py-0.5 rounded border border-green-500/30">Owner</span>}
+                       {roomState?.hostId !== u.id && roomState?.ownerId !== u.id && <span className="text-[10px] bg-gray-500/20 text-gray-500 px-1.5 py-0.5 rounded border border-gray-500/30">Participant</span>}
+                     </div>
+                   </div>
+                </div>
+                {isHost && roomState?.ownerId !== u.id && (
+                    <button onClick={() => sendWsMessage({ type: "assign_owner", targetUserId: u.id })} className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded transition-colors shadow-sm">Make Owner</button>
+                )}
+              </div>
+           ))}
+           {(!roomState?.users || roomState.users.length === 0) && (
+              <div className="text-center text-sm text-toolbar-foreground/40 py-8">No members connected</div>
+           )}
+        </div>
+      </div>
+    </div>
+  );
+
   // ─── Empty state (no PDF loaded) ─────────────────────────────
   if (!pdfDataUrl) {
     return (
@@ -608,6 +629,13 @@ const PDFMerged = () => {
             >
               <History className="h-3.5 w-3.5" />
               History
+            </button>
+            <button
+              onClick={() => setShowDashboard(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-toolbar-foreground/60 hover:bg-toolbar-foreground/10 transition-colors"
+            >
+              <Users className="h-3.5 w-3.5" />
+              Dashboard
             </button>
             {roomId && (
               <span
@@ -672,46 +700,11 @@ const PDFMerged = () => {
             className="hidden"
           />
         </div>
-        {historyModalJSX}
       </div>
     );
   }
 
   // ─── PDF viewer ─────────────────────────────────────────────────
-
-  const dashboardModalJSX = showDashboard && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b dark:border-zinc-800">
-          <h2 className="text-lg font-semibold flex items-center gap-2"><Users className="w-5 h-5"/> Room Dashboard</h2>
-          <button onClick={() => setShowDashboard(false)} className="p-1 hover:bg-black/5 rounded text-toolbar-foreground/60 hover:text-red-500"><X className="w-5 h-5"/></button>
-        </div>
-        <div className="p-4 max-h-[60vh] overflow-y-auto space-y-2">
-           {roomState?.users?.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 border dark:border-zinc-800 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg text-sm transition-colors">
-                <div className="flex items-center gap-3">
-                   <img src={u.picture || 'https://www.gravatar.com/avatar/?d=mp'} className="w-8 h-8 rounded-full shadow-sm" />
-                   <div>
-                     <span className="block font-medium truncate max-w-[150px]" title={u.name}>{u.name}</span>
-                     <div className="flex gap-1 mt-0.5">
-                       {roomState?.hostId === u.id && <span className="text-[10px] bg-yellow-500/20 text-yellow-600 px-1.5 py-0.5 rounded border border-yellow-500/30">Host</span>}
-                       {roomState?.ownerId === u.id && <span className="text-[10px] bg-green-500/20 text-green-600 px-1.5 py-0.5 rounded border border-green-500/30">Owner</span>}
-                       {roomState?.hostId !== u.id && roomState?.ownerId !== u.id && <span className="text-[10px] bg-gray-500/20 text-gray-500 px-1.5 py-0.5 rounded border border-gray-500/30">Participant</span>}
-                     </div>
-                   </div>
-                </div>
-                {isHost && roomState?.ownerId !== u.id && (
-                    <button onClick={() => sendWsMessage({ type: "assign_owner", targetUserId: u.id })} className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded transition-colors shadow-sm">Make Owner</button>
-                )}
-              </div>
-           ))}
-           {(!roomState?.users || roomState.users.length === 0) && (
-              <div className="text-center text-sm text-toolbar-foreground/40 py-8">No members connected</div>
-           )}
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="h-full flex flex-col relative">
@@ -910,7 +903,7 @@ const PDFMerged = () => {
       {/* PDF rendering area */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 min-h-0 overflow-auto bg-workspace p-6"
+        className={`flex-1 min-h-0 bg-workspace p-6 ${isOwner ? 'overflow-auto' : 'overflow-hidden'}`}
         onScroll={(e) => {
            if (isOwnerRef.current && pdfMap && !isPanningRef.current) {
                const now = Date.now();
