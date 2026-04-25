@@ -37,9 +37,9 @@
     --radius: 0.5rem;
 
     /* Custom paint app tokens */
-    --toolbar-bg: 220 20% 18%;
-    --toolbar-foreground: 220 14% 96%;
-    --toolbar-hover: 220 20% 25%;
+    --toolbar-bg: 0 0% 100%;
+    --toolbar-foreground: 220 20% 10%;
+    --toolbar-hover: 220 14% 94%;
     --toolbar-active: 174 72% 40%;
     --canvas-bg: 0 0% 100%;
     --canvas-border: 220 14% 80%;
@@ -84,9 +84,9 @@
     --input: 220 20% 22%;
     --ring: 174 72% 45%;
 
-    --toolbar-bg: 220 20% 12%;
-    --toolbar-foreground: 220 14% 96%;
-    --toolbar-hover: 220 20% 18%;
+    --toolbar-bg: 220 20% 10%;
+    --toolbar-foreground: 0 0% 100%;
+    --toolbar-hover: 220 20% 16%;
     --toolbar-active: 174 72% 45%;
     --canvas-bg: 220 20% 8%;
     --canvas-border: 220 20% 25%;

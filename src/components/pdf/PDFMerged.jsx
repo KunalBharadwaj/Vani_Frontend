@@ -25,7 +25,10 @@ import {
   Hand,
   History,
   Eraser,
+  Menu, Sun, Moon, LogOut, PaintBucket, Copy, Check
 } from 'lucide-react';
+import { useTheme } from '@/context/ThemeContext';
+import { Link } from 'react-router-dom';
 
 // Configure PDF.js worker from public folder
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -47,6 +50,10 @@ const PDFMerged = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [historyDocs, setHistoryDocs] = useState([]);
+  const [showMenu, setShowMenu] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const searchString = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
   // Generate a room if none exists, but only if we are actively viewing the PDF section
   useEffect(() => {
@@ -617,27 +624,31 @@ const PDFMerged = () => {
   // ─── Empty state (no PDF loaded) ─────────────────────────────
   if (!pdfDataUrl) {
     return (
-      <div className="h-screen w-screen overflow-hidden bg-workspace relative font-sans">
-        {/* Floating Header */}
-        <div className="absolute top-4 left-4 z-40 flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
-          <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight pr-2 border-r border-toolbar-foreground/20 flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            PDF Editor
-          </h1>
-          <button
-            onClick={() => setShowDashboard(true)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-toolbar-foreground/80 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors"
-          >
-            <Users className="h-4 w-4 text-blue-500" />
-            Dashboard
-          </button>
-          <button
-            onClick={() => setShowHistory(true)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-toolbar-foreground/80 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors"
-          >
-            <History className="h-4 w-4 text-orange-500" />
-            History
-          </button>
+      <div className={`h-screen w-screen overflow-hidden ${theme === 'dark' ? 'bg-[#121212]' : 'bg-[#ffffff]'} relative font-sans transition-colors duration-300`}>
+        {/* Floating Top-Left Status + Menu */}
+        <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
+          <div className="relative">
+            <button onClick={() => setShowMenu(v => !v)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Menu"><Menu className="w-4 h-4" /></button>
+            {showMenu && (
+              <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
+                <div className="p-2 space-y-1">
+                  <button onClick={() => setShowHistory(true)} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
+            <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              PDF Editor
+            </h1>
+          </div>
+        </div>
+
+        {/* Top-Right Tools */}
+        <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
+          <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
+          <button onClick={() => setShowDashboard(true)} className="flex items-center justify-center p-2 rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
         </div>
 
 
@@ -687,33 +698,38 @@ const PDFMerged = () => {
   // ─── PDF viewer ─────────────────────────────────────────────────
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-workspace relative font-sans">
-      {/* Floating Top-Left Status + Dashboard */}
-      <div className="absolute top-4 left-4 z-40 flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
-        <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight pr-2 border-r border-toolbar-foreground/20 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary"/>
-          <span className="max-w-[150px] truncate">{pdfFileName || "PDF Viewer"}</span>
-        </h1>
-        {readonly && <span className="text-[10px] font-bold uppercase bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-md">History View</span>}
-        <button
-          onClick={() => setShowDashboard(true)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-toolbar-foreground/80 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors"
-          title="Manage Members"
-        >
-          <Users className="h-4 w-4 text-blue-500" />
-          Dashboard
-        </button>
-        {isOwner && (
-          <button
-            onClick={closePdf}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
-            title="Remove Document"
-          >
-            <X className="h-4 w-4" />
-            Close
-          </button>
-        )}
-      </div>
+      <div className={`h-screen w-screen overflow-hidden ${theme === 'dark' ? 'bg-[#121212]' : 'bg-[#ffffff]'} relative font-sans transition-colors duration-300`}>
+        {/* Floating Top-Left Status + Menu */}
+        <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
+          <div className="relative">
+            <button onClick={() => setShowMenu(v => !v)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Menu"><Menu className="w-4 h-4" /></button>
+            {showMenu && (
+              <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
+                <div className="p-2 space-y-1">
+                  <button onClick={() => setShowHistory(true)} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
+            <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary"/>
+              <span className="max-w-[150px] truncate">{pdfFileName || "PDF Viewer"}</span>
+            </h1>
+            {readonly && <span className="text-[10px] font-bold uppercase bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-md">History View</span>}
+            {isOwner && (
+              <button onClick={closePdf} className="flex items-center justify-center p-1 rounded-md text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-colors" title="Close document">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Top-Right Tools */}
+        <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
+          <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
+          <button onClick={() => setShowDashboard(true)} className="flex items-center justify-center p-2 rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
+        </div>
 
       {/* Floating Top-Center UI */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 p-1 bg-toolbar shadow-md border border-toolbar-foreground/15 rounded-2xl pointer-events-auto">
