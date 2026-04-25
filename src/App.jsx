@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, useLocation, useSearchParams } from "reac
 import { Suspense, lazy, useEffect, useState } from "react";
 import Navigation from "@/components/Navigation";
 import Index from "./pages/Index";
+import { ThemeProvider } from "@/context/ThemeContext";
 import NotFound from "./pages/NotFound";
 import { Login } from "./components/auth/Login";
 
@@ -74,33 +75,35 @@ const AuthWrapper = ({ children }) => {
 };
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    {/* TooltipProvider enables Radix / shadcn tooltips across the app */}
-    <TooltipProvider>
-      {/* shadcn/ui toast system */}
-      <Toaster />
-      {/* Sonner toast system for transient notifications */}
-      <Sonner />
+  <ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      {/* TooltipProvider enables Radix / shadcn tooltips across the app */}
+      <TooltipProvider>
+        {/* shadcn/ui toast system */}
+        <Toaster />
+        {/* Sonner toast system for transient notifications */}
+        <Sonner />
 
-      {/* BrowserRouter handles client-side navigation between pages */}
-      <BrowserRouter>
-        <AuthWrapper>
-          <Navigation />
-          <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
-            <Routes>
-              {/* Placeholder routes - actual pages are always mounted below */}
-              <Route path="/" element={<div />} />
-              <Route path="/pdf" element={<div />} />
-              {/* Catch-all fallback for unknown routes */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            {/* Always-mounted pages, shown/hidden based on route */}
-            <PersistentPages />
-          </Suspense>
-        </AuthWrapper>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+        {/* BrowserRouter handles client-side navigation between pages */}
+        <BrowserRouter>
+          <AuthWrapper>
+            <Navigation />
+            <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+              <Routes>
+                {/* Placeholder routes - actual pages are always mounted below */}
+                <Route path="/" element={<div />} />
+                <Route path="/pdf" element={<div />} />
+                {/* Catch-all fallback for unknown routes */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              {/* Always-mounted pages, shown/hidden based on route */}
+              <PersistentPages />
+            </Suspense>
+          </AuthWrapper>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;

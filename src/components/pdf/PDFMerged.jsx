@@ -172,7 +172,8 @@ const PDFMerged = () => {
     // We rely on the observer firing for the initial canvas paints
 
     const observer = (event) => {
-      if (isSyncingRef.current) return;
+      // Don't use isSyncingRef guard here — it was blocking remote updates.
+      // Instead we do self-echo detection by comparing data strings.
 
       const remotePdf = pdfMap.get('pdfData');
       const remoteName = pdfMap.get('fileName');
@@ -187,18 +188,19 @@ const PDFMerged = () => {
       
       // We expect numPages to be rendered and sized soon
       // For any canvas changes available from Yjs:
-      for (let i = 1; i <= 50; i++) { // arbitrary upper reasonable limit to sync safely
+      for (let i = 1; i <= 50; i++) {
           const rc = pdfMap.get(`canvasOverlay_${i}`);
           if (rc !== undefined && rc !== lastRemoteCanvasOverlayRef.current[i]) {
               lastRemoteCanvasOverlayRef.current[i] = rc;
               const c = canvasRefs.current[i];
+              // Self-echo guard: skip if this canvas already matches
+              if (c && c.toDataURL('image/webp', 0.6) === rc) continue;
               if (c) {
                   applyRemoteCanvas(c, rc);
               } else {
-                  // Canvas might not be mounted yet; queue it or let subsequent renders pick it up
                   setTimeout(() => {
                       if (canvasRefs.current[i]) applyRemoteCanvas(canvasRefs.current[i], rc);
-                  }, 100);
+                  }, 300);
               }
           }
       }
@@ -362,9 +364,9 @@ const PDFMerged = () => {
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.drawImage(img, 0, 0);
       if (pdfMap) {
-          isSyncingRef.current = true;
-          pdfMap.set(`canvasOverlay_${page}`, c.toDataURL());
-          isSyncingRef.current = false;
+          const dataUrl = c.toDataURL('image/webp', 0.6);
+          lastRemoteCanvasOverlayRef.current[page] = dataUrl;
+          pdfMap.set(`canvasOverlay_${page}`, dataUrl);
       }
     };
     img.src = targetDataUrl;
@@ -386,9 +388,9 @@ const PDFMerged = () => {
       ctx.clearRect(0, 0, c.width, c.height);
       ctx.drawImage(img, 0, 0);
       if (pdfMap) {
-          isSyncingRef.current = true;
-          pdfMap.set(`canvasOverlay_${page}`, c.toDataURL());
-          isSyncingRef.current = false;
+          const dataUrl = c.toDataURL('image/webp', 0.6);
+          lastRemoteCanvasOverlayRef.current[page] = dataUrl;
+          pdfMap.set(`canvasOverlay_${page}`, dataUrl);
       }
     };
     img.src = targetDataUrl;
@@ -398,13 +400,12 @@ const PDFMerged = () => {
     for (let i = 1; i <= (numPages || 1); i++) {
         const c = canvasRefs.current[i];
         if (c) {
-            saveAnnotationSnapshot(i); // Allow undoing the clear for each page
+            saveAnnotationSnapshot(i);
             const ctx = c.getContext('2d');
             ctx.clearRect(0, 0, c.width, c.height);
             if (pdfMap) {
-                isSyncingRef.current = true;
+                lastRemoteCanvasOverlayRef.current[i] = undefined;
                 pdfMap.delete(`canvasOverlay_${i}`);
-                isSyncingRef.current = false;
             }
         }
     }
@@ -506,9 +507,10 @@ const PDFMerged = () => {
     if (isDrawingRef.current) {
         const c = canvasRefs.current[activeCanvasPageRef.current];
         if (pdfMap && c) {
-            isSyncingRef.current = true;
-            pdfMap.set(`canvasOverlay_${activeCanvasPageRef.current}`, c.toDataURL());
-            isSyncingRef.current = false;
+            const dataUrl = c.toDataURL('image/webp', 0.6);
+            // Update self-echo guard BEFORE setting into Yjs
+            lastRemoteCanvasOverlayRef.current[activeCanvasPageRef.current] = dataUrl;
+            pdfMap.set(`canvasOverlay_${activeCanvasPageRef.current}`, dataUrl);
         }
     }
     isDrawingRef.current = false;
@@ -615,54 +617,32 @@ const PDFMerged = () => {
   // ─── Empty state (no PDF loaded) ─────────────────────────────
   if (!pdfDataUrl) {
     return (
-      <div className="h-full flex flex-col relative">
-        {/* Header bar */}
-        <header className="flex items-center justify-between px-4 py-2 bg-toolbar border-b border-toolbar-foreground/10">
-          <h1 className="text-lg font-semibold text-toolbar-foreground flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+      <div className="h-screen w-screen overflow-hidden bg-workspace relative font-sans">
+        {/* Floating Header */}
+        <div className="absolute top-4 left-4 z-40 flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
+          <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight pr-2 border-r border-toolbar-foreground/20 flex items-center gap-2">
+            <FileText className="h-4 w-4" />
             PDF Editor
           </h1>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={loadHistory}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-toolbar-foreground/60 hover:bg-toolbar-foreground/10 transition-colors"
-            >
-              <History className="h-3.5 w-3.5" />
-              History
-            </button>
-            <button
-              onClick={() => setShowDashboard(true)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-toolbar-foreground/60 hover:bg-toolbar-foreground/10 transition-colors"
-            >
-              <Users className="h-3.5 w-3.5" />
-              Dashboard
-            </button>
-            {roomId && (
-              <span
-                className="text-xs font-mono bg-blue-500/10 text-blue-400 px-2 py-1 rounded cursor-pointer hover:bg-blue-500/20 transition-colors"
-                title="Share this URL to collaborate"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  toast.success('URL copied to clipboard!');
-                }}
-              >
-                Room: {roomId}
-              </span>
-            )}
-            <span
-              className={`text-xs px-2 py-1 rounded-full ${
-                status === 'connected'
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-red-500/20 text-red-400'
-              }`}
-            >
-              {status === 'connected' ? '● Synced' : '○ Offline'}
-            </span>
-          </div>
-        </header>
+          <button
+            onClick={() => setShowDashboard(true)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-toolbar-foreground/80 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors"
+          >
+            <Users className="h-4 w-4 text-blue-500" />
+            Dashboard
+          </button>
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-toolbar-foreground/80 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors"
+          >
+            <History className="h-4 w-4 text-orange-500" />
+            History
+          </button>
+        </div>
+
 
         {/* Upload prompt */}
-        <div className="flex-1 flex items-center justify-center bg-workspace">
+        <div className="flex-1 h-full w-full flex items-center justify-center bg-workspace">
           <div
             className="relative group cursor-pointer"
             onClick={() => {
@@ -707,203 +687,152 @@ const PDFMerged = () => {
   // ─── PDF viewer ─────────────────────────────────────────────────
 
   return (
-    <div className="h-full flex flex-col relative">
-      {/* Toolbar */}
-      <header className="flex items-center justify-between px-4 py-2 bg-toolbar border-b border-toolbar-foreground/10">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold text-toolbar-foreground flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            PDF Editor
-          </h1>
-          {pdfFileName && (
-            <span className="text-xs text-toolbar-foreground/50 truncate max-w-[200px]" title={pdfFileName}>
-              {pdfFileName}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {!readonly && (
-            <>
-              {/* Pan toggle */}
-              <button
-                onClick={() => { setAnnotating(false); setIsErasing(false); }}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  !annotating
-                    ? 'bg-blue-500/20 text-blue-600 dark:bg-blue-500/30'
-                    : 'bg-toolbar-foreground/10 text-toolbar-foreground/60 hover:text-toolbar-foreground'
-                }`}
-                title="Pan / Scroll Mode"
-              >
-                <Hand className="h-3.5 w-3.5" />
-                Scroll
-              </button>
-
-              {/* Annotation toggle */}
-              <button
-                onClick={() => { setAnnotating(true); setIsErasing(false); }}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  annotating
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-toolbar-foreground/10 text-toolbar-foreground/60 hover:text-toolbar-foreground'
-                }`}
-                title="Toggle annotation drawing"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Annotate
-              </button>
-
-              {annotating && (
-                <>
-                  {/* Eraser toggle */}
-                  <button
-                    onClick={() => setIsErasing(!isErasing)}
-                    className={`p-1.5 rounded transition-colors ${
-                      isErasing ? 'bg-orange-500/20 text-orange-400' : 'text-toolbar-foreground/50 hover:text-toolbar-foreground'
-                    }`}
-                    title="Eraser"
-                  >
-                    <Eraser className="h-4 w-4" />
-                  </button>
-                  {/* Undo */}
-                  <button onClick={undoAnnotation} className="p-1.5 rounded text-toolbar-foreground/50 hover:text-toolbar-foreground transition-colors" title="Undo annotation">
-                    <Undo2 className="h-4 w-4" />
-                  </button>
-                  {/* Redo */}
-                  <button onClick={redoAnnotation} className="p-1.5 rounded text-toolbar-foreground/50 hover:text-toolbar-foreground transition-colors" title="Redo annotation">
-                    <Redo2 className="h-4 w-4" />
-                  </button>
-                  {/* Clear */}
-                  <button onClick={clearAnnotations} className="p-1.5 rounded text-toolbar-foreground/50 hover:text-toolbar-foreground transition-colors" title="Clear all annotations">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                  
-                  <div className="w-px h-4 bg-toolbar-foreground/20 mx-1" />
-                  
-                  {/* Color swatches */}
-                  <div className="flex gap-0.5">
-                    {ANNOTATION_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        className={`w-5 h-5 rounded-full border-2 transition-transform ${
-                          annotationColor === c && !isErasing ? 'border-white scale-125 z-10' : 'border-transparent'
-                        }`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => { setAnnotationColor(c); setIsErasing(false); }}
-                      />
-                    ))}
-                  </div>
-
-                  <div className="w-px h-4 bg-toolbar-foreground/20 mx-1" />
-
-                  {/* Thickness slider */}
-                  <div className="flex items-center gap-2 group relative" title={`Line Thickness: ${annotationSize}`}>
-                    <input
-                      type="range"
-                      min="1"
-                      max="15"
-                      step="1"
-                      value={annotationSize}
-                      onChange={(e) => setAnnotationSize(Number(e.target.value))}
-                      className="w-16 h-1.5 bg-toolbar-foreground/20 rounded-lg appearance-none cursor-pointer accent-primary"
-                    />
-                  </div>
-                </>
-              )}
-              <div className="w-px h-5 bg-toolbar-foreground/20 mx-1" />
-            </>
-          )}
-
-          {/* Room / status */}
-          {roomId && (
-            <span
-              className="text-xs font-mono bg-blue-500/10 text-blue-400 px-2 py-1 rounded cursor-pointer hover:bg-blue-500/20 transition-colors"
-              title="Share this URL to collaborate"
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                toast.success('URL copied to clipboard!');
-              }}
-            >
-              Room: {roomId}
-            </span>
-          )}
-          <span
-            className={`text-xs px-2 py-1 rounded-full ${
-              status === 'connected'
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-red-500/20 text-red-400'
-            }`}
-          >
-            {status === 'connected' ? '● Synced' : '○ Offline'}
-          </span>
-
-          {/* Upload new */}
-          {!readonly && (
-            <button
-              onClick={() => {
-                 if (isOwner) fileInputRef.current?.click();
-                 else toast.error("Only the room owner can upload.");
-              }}
-              className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              Upload
-            </button>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-
-          {/* Dashboard button */}
-          <button
-            onClick={() => setShowDashboard(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium text-toolbar-foreground/60 hover:bg-toolbar-foreground/10 transition-colors"
-          >
-            <Users className="h-3.5 w-3.5" />
-            Dashboard
-          </button>
-
-          {/* Close */}
+    <div className="h-screen w-screen overflow-hidden bg-workspace relative font-sans">
+      {/* Floating Top-Left Status + Dashboard */}
+      <div className="absolute top-4 left-4 z-40 flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
+        <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight pr-2 border-r border-toolbar-foreground/20 flex items-center gap-2">
+          <FileText className="h-4 w-4 text-primary"/>
+          <span className="max-w-[150px] truncate">{pdfFileName || "PDF Viewer"}</span>
+        </h1>
+        {readonly && <span className="text-[10px] font-bold uppercase bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-md">History View</span>}
+        <button
+          onClick={() => setShowDashboard(true)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-toolbar-foreground/80 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors"
+          title="Manage Members"
+        >
+          <Users className="h-4 w-4 text-blue-500" />
+          Dashboard
+        </button>
+        {isOwner && (
           <button
             onClick={closePdf}
-            className="p-1.5 rounded text-toolbar-foreground/50 hover:text-red-400 transition-colors"
-            title="Remove PDF"
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold text-red-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+            title="Remove Document"
           >
             <X className="h-4 w-4" />
+            Close
+          </button>
+        )}
+      </div>
+
+      {/* Floating Top-Center UI */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 p-1 bg-toolbar shadow-md border border-toolbar-foreground/15 rounded-2xl pointer-events-auto">
+        {/* Zoom */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={zoomOut}
+            disabled={scale <= 0.5}
+            className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-toolbar-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <span className="text-xs font-bold text-toolbar-foreground/60 min-w-[50px] text-center">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            onClick={zoomIn}
+            disabled={scale >= 3}
+            className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-toolbar-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ZoomIn className="h-4 w-4" />
           </button>
         </div>
-      </header>
 
-      {/* Page controls */}
-      <div className="flex items-center justify-center gap-4 px-4 py-2 bg-toolbar-foreground/5 border-b border-toolbar-foreground/10">
+        {!readonly && (
+          <>
+            <div className="w-px h-6 bg-toolbar-foreground/20 mx-1" />
+            {/* Scroll/Pan */}
+            <button
+              onClick={() => { setAnnotating(false); setIsErasing(false); }}
+              className={`p-2 rounded-xl transition-colors ${!annotating ? "bg-primary/10 text-primary" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
+              title="Pan / Scroll Mode"
+            >
+              <Hand className="h-4 w-4" />
+            </button>
 
-        <button
-          onClick={zoomOut}
-          disabled={scale <= 0.5}
-          className="p-1.5 rounded-lg bg-toolbar-foreground/10 text-toolbar-foreground/70 hover:bg-toolbar-foreground/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ZoomOut className="h-4 w-4" />
-        </button>
-        <span className="text-xs font-medium text-toolbar-foreground/50 min-w-[48px] text-center">
-          {Math.round(scale * 100)}%
-        </span>
-        <button
-          onClick={zoomIn}
-          disabled={scale >= 3}
-          className="p-1.5 rounded-lg bg-toolbar-foreground/10 text-toolbar-foreground/70 hover:bg-toolbar-foreground/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ZoomIn className="h-4 w-4" />
-        </button>
+            {/* Annotate */}
+            <button
+              onClick={() => { setAnnotating(true); setIsErasing(false); }}
+              className={`p-2 rounded-xl transition-colors ${annotating && !isErasing ? "bg-primary/10 text-primary" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
+              title="Pen Tool"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+
+            {annotating && (
+              <>
+                <button
+                  onClick={() => setIsErasing(!isErasing)}
+                  className={`p-2 rounded-xl transition-colors ${isErasing ? "bg-orange-500/10 text-orange-400" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
+                  title="Eraser"
+                >
+                  <Eraser className="h-4 w-4" />
+                </button>
+
+                <div className="flex items-center gap-1 pl-2 mx-1 border-l border-border">
+                  {ANNOTATION_COLORS.map(color => (
+                    <button
+                      key={color}
+                      className={`w-5 h-5 rounded-full transition-transform border border-border ${annotationColor === color && !isErasing ? "scale-110 ring-2 ring-offset-1 ring-offset-background ring-blue-500" : "hover:scale-105"}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => { setAnnotationColor(color); setIsErasing(false); }}
+                    />
+                  ))}
+                </div>
+
+                <div className="w-px h-6 bg-toolbar-foreground/20 mx-1" />
+                <div className="flex items-center gap-2 group relative px-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="15"
+                    step="1"
+                    value={annotationSize}
+                    onChange={(e) => setAnnotationSize(Number(e.target.value))}
+                    className="w-16 h-1.5 bg-toolbar-foreground/20 rounded-lg appearance-none cursor-pointer accent-primary"
+                  />
+                </div>
+
+                <div className="w-px h-6 bg-border mx-1" />
+                <button onClick={undoAnnotation} className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Undo">
+                  <Undo2 className="h-4 w-4" />
+                </button>
+                <button onClick={redoAnnotation} className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Redo">
+                  <Redo2 className="h-4 w-4" />
+                </button>
+                <button onClick={clearAnnotations} className="p-2 rounded-xl text-toolbar-foreground/70 hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Clear All">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+            
+            {isOwner && (
+              <>
+                <div className="w-px h-6 bg-border mx-1" />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 px-3 py-1.5 ml-1 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm"
+                >
+                  <Upload className="h-3 w-3" />
+                  Upload
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </>
+            )}
+          </>
+        )}
       </div>
 
       {/* PDF rendering area */}
       <div 
         ref={scrollContainerRef}
-        className={`flex-1 min-h-0 bg-workspace p-6 ${isOwner ? 'overflow-auto' : 'overflow-hidden'}`}
+        className={`absolute inset-0 pt-20 pb-6 px-6 bg-workspace ${isOwner ? 'overflow-auto' : 'overflow-hidden'}`}
         onScroll={(e) => {
            if (isOwnerRef.current && pdfMap && !isPanningRef.current) {
                const now = Date.now();
@@ -987,13 +916,6 @@ const PDFMerged = () => {
           </Document>
         </div>
       </div>
-
-      {/* Footer status bar */}
-      <footer className="flex items-center justify-between px-4 py-1 bg-toolbar text-toolbar-foreground/60 text-xs">
-        <span>{pdfFileName} {readonly && "(Read-Only History)"}</span>
-        <span>{numPages ? `${numPages} page${numPages > 1 ? 's' : ''}` : ''}</span>
-        <span>{Math.round(scale * 100)}% zoom</span>
-      </footer>
 
       {historyModalJSX}
       {dashboardModalJSX}

@@ -115,13 +115,19 @@
 }
 
 @layer utilities {
+  /* Excalidraw-style toolbar buttons */
   .tool-button {
-    @apply flex items-center justify-center w-10 h-10 rounded-md transition-colors;
-    @apply bg-transparent text-toolbar-foreground hover:bg-toolbar-hover;
+    @apply flex items-center justify-center w-9 h-9 rounded-lg transition-colors;
+    color: hsl(var(--toolbar-foreground));
+    background: transparent;
+  }
+  .tool-button:hover {
+    background: hsl(var(--toolbar-hover));
   }
 
   .tool-button-active {
-    @apply bg-toolbar-active text-accent-foreground;
+    background: hsl(var(--toolbar-active)) !important;
+    color: hsl(var(--accent-foreground)) !important;
   }
 }
 

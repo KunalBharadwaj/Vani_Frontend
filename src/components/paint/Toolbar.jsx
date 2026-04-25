@@ -98,7 +98,7 @@ export const Toolbar = ({
   };
 
   return (
-    <div className="flex items-center gap-1 px-3 py-2 bg-toolbar rounded-lg overflow-x-auto">
+    <div className="flex items-center gap-1 px-2 py-1.5 overflow-x-auto w-full">
       {/* Selection & Drawing Tools */}
       <div className="flex items-center gap-0.5">
         <ToolButton
