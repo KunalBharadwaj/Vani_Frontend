@@ -217,13 +217,15 @@ export const PaintCanvas = () => {
         setPages(remotePagesRaw);
       } catch { }
     }
-    const existingStrokes = pagesMap.get(`${currentPageIdRef.current}_strokes`);
-    if (existingStrokes) {
-      try {
-        const remote = JSON.parse(existingStrokes); allStrokesRef.current[currentPageIdRef.current] = remote;
-        redraw(remote, backgroundColor);
-      } catch { }
-    }
+    Array.from(pagesMap.keys()).forEach(key => {
+      if (key.endsWith("_strokes")) {
+        const pageIdForStroke = key.replace("_strokes", "");
+        try {
+          allStrokesRef.current[pageIdForStroke] = JSON.parse(pagesMap.get(key));
+        } catch { }
+      }
+    });
+    redraw(allStrokesRef.current[currentPageIdRef.current] ?? [], backgroundColor);
 
     const observer = (event) => {
       if (event.keysChanged?.has("pagesList")) {
@@ -240,10 +242,22 @@ export const PaintCanvas = () => {
           } catch { }
         }
       }
-      const strokeKey = `${currentPageIdRef.current}_strokes`;
-      if (event.keysChanged?.has(strokeKey) && !isSyncingRef.current) {
-        const payload = pagesMap.get(strokeKey);
-        if (payload) { try { const remoteStrokes = JSON.parse(payload); allStrokesRef.current[currentPageIdRef.current] = remoteStrokes; redraw(remoteStrokes, backgroundColor); } catch { } }
+      if (!isSyncingRef.current && event.keysChanged) {
+        event.keysChanged.forEach(key => {
+          if (key.endsWith("_strokes")) {
+            const pageIdForStroke = key.replace("_strokes", "");
+            const payload = pagesMap.get(key);
+            if (payload) {
+              try {
+                const remoteStrokes = JSON.parse(payload);
+                allStrokesRef.current[pageIdForStroke] = remoteStrokes;
+                if (pageIdForStroke === currentPageIdRef.current) {
+                  redraw(remoteStrokes, backgroundColor);
+                }
+              } catch { }
+            }
+          }
+        });
       }
     };
     pagesMap.observe(observer); return () => pagesMap.unobserve(observer);

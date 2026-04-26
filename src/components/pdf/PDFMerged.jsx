@@ -1,7 +1,7 @@
 // PDF Viewer with collaborative sharing via Yjs.
 // When a user uploads a PDF, the file data is stored in a shared Yjs map
 // so all room members instantly see and can navigate the same document.
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -32,6 +32,14 @@ import { Link } from 'react-router-dom';
 
 // Configure PDF.js worker from public folder
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+// Stable options object — MUST be outside component or memoized.
+// Recreating this inline every render destroys the PDF.js WebWorker mid-load.
+const PDF_OPTIONS = {
+  cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+  cMapPacked: true,
+  standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
+};
 
 // Annotation drawing colors
 const ANNOTATION_COLORS = [
@@ -624,6 +632,7 @@ const PDFMerged = () => {
   // ─── Empty state (no PDF loaded) ─────────────────────────────
   if (!pdfDataUrl) {
     return (
+      <>
       <div className={`h-screen w-screen overflow-hidden ${theme === 'dark' ? 'bg-[#121212]' : 'bg-[#ffffff]'} relative font-sans transition-colors duration-300`}>
         {/* Floating Top-Left Status + Menu */}
         <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
@@ -632,7 +641,8 @@ const PDFMerged = () => {
             {showMenu && (
               <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
                 <div className="p-2 space-y-1">
-                  <button onClick={() => setShowHistory(true)} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
+                  <button onClick={() => { setShowMenu(false); setShowHistory(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
+                  <button onClick={() => { setShowMenu(false); setShowDashboard(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><Users className="w-4 h-4 text-blue-400" /> Dashboard</button>
                 </div>
               </div>
             )}
@@ -692,6 +702,9 @@ const PDFMerged = () => {
           />
         </div>
       </div>
+      {historyModalJSX}
+      {dashboardModalJSX}
+    </>
     );
   }
 
@@ -706,7 +719,8 @@ const PDFMerged = () => {
             {showMenu && (
               <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
                 <div className="p-2 space-y-1">
-                  <button onClick={() => setShowHistory(true)} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
+                  <button onClick={() => { setShowMenu(false); setShowHistory(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
+                  <button onClick={() => { setShowMenu(false); setShowDashboard(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><Users className="w-4 h-4 text-blue-400" /> Dashboard</button>
                 </div>
               </div>
             )}
@@ -866,6 +880,7 @@ const PDFMerged = () => {
         <div ref={pageContainerRef} className="flex flex-col items-center gap-4">
           <Document
             file={pdfDataUrl}
+            options={PDF_OPTIONS}
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={(error) => {
               console.error('PDF load error:', error);
