@@ -114,32 +114,10 @@ const PDFMerged = () => {
   const scrollContainerRef = useRef(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, sL: 0, sT: 0 });
-  // C-5: Initialize to reasonable width instead of null to prevent initial misalignment
-  const [containerWidth, setContainerWidth] = useState(window.innerWidth - 48);
 
   const fileInputRef = useRef(null);
   const isSyncingRef = useRef(false);  // prevent echo loops
   const lastRemoteCanvasOverlayRef = useRef({});
-
-  // Measure the scroll container width so PDF pages can fit responsively
-  useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    let timeout;
-    const ro = new ResizeObserver(entries => {
-      const entry = entries[0];
-      if (entry) {
-        // D-5: Debounce resize event 100ms
-        clearTimeout(timeout);
-        timeout = setTimeout(() => {
-          // Subtract padding (p-6 = 24px each side = 48px total)
-          setContainerWidth(Math.floor(entry.contentRect.width) - 48);
-        }, 100);
-      }
-    });
-    ro.observe(el);
-    return () => { ro.disconnect(); clearTimeout(timeout); };
-  }, []);
 
   // Block all scroll input (wheel, touch, scrollbar drag) for non-owners
   useEffect(() => {
@@ -466,7 +444,8 @@ const PDFMerged = () => {
         if (!Array.isArray(entries)) return;
         for (const entry of entries) {
           const wrap = entry.target;
-          const c = wrap.querySelector('canvas');
+          // IMPORTANT: Explicitly target our transparent annotation layer, NOT the react-pdf worker canvas
+          const c = wrap.querySelector('canvas.z-10');
           if (!c) continue;
           const rect = entry.contentRect;
           // only resize if significant change (avoiding subpixel loop issues)
@@ -919,7 +898,7 @@ const PDFMerged = () => {
         }}
         style={{ overscrollBehavior: 'contain' }}
       >
-        <div ref={pageContainerRef} className="flex flex-col items-center gap-4">
+        <div ref={pageContainerRef} className="flex flex-col gap-4">
           <Document
             file={pdfDataUrl}
             options={PDF_OPTIONS}
@@ -936,11 +915,10 @@ const PDFMerged = () => {
             }
           >
             {Array.from(new Array(numPages || 1), (el, index) => (
-              <div key={`page_${index + 1}`} className="relative shadow-2xl rounded-lg mb-4">
+              <div key={`page_${index + 1}`} className="relative shadow-2xl rounded-lg mb-4 mx-auto w-fit">
                 <Page
                   pageNumber={index + 1}
                   scale={scale}
-                  width={containerWidth}
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
                   loading={
