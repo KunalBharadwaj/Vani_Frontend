@@ -24,17 +24,73 @@ function getSvgPathFromStroke(stroke) {
   return d.join(" ");
 }
 
-function renderStrokes(ctx, canvas, strokes, bgColor) {
+// ─── Theme-aware color adaptation ─────────────────────────────────────────
+// Converts a hex color to HSL components.
+function hexToHsl(hex) {
+  let r = 0, g = 0, b = 0;
+  const cleaned = hex.replace('#', '');
+  if (cleaned.length === 3) {
+    r = parseInt(cleaned[0] + cleaned[0], 16);
+    g = parseInt(cleaned[1] + cleaned[1], 16);
+    b = parseInt(cleaned[2] + cleaned[2], 16);
+  } else {
+    r = parseInt(cleaned.slice(0, 2), 16);
+    g = parseInt(cleaned.slice(2, 4), 16);
+    b = parseInt(cleaned.slice(4, 6), 16);
+  }
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+// Converts HSL back to a hex string.
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const toHex = (x) => Math.round(x * 255).toString(16).padStart(2, '0');
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+
+// Returns an adapted color visible on the current theme background without modifying the original.
+function adaptColorForTheme(color, isDark) {
+  if (!color || !color.startsWith('#')) return color;
+  try {
+    const { h, s, l } = hexToHsl(color);
+    if (isDark) {
+      // Dark background: if the stroke is too dark (black, navy, dark grey…), lighten it significantly.
+      if (l < 45) return hslToHex(h, Math.min(s + 10, 100), Math.max(l + 55, 75));
+    } else {
+      // Light background: if the stroke is too light (white, pale yellow…), darken it.
+      if (l > 75) return hslToHex(h, Math.min(s + 10, 100), Math.min(l - 50, 35));
+    }
+  } catch { /* malformed color — fall through */ }
+  return color; // original color is already fine for this theme
+}
+
+function renderStrokes(ctx, canvas, strokes, bgColor, isDark = false) {
   ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   for (const s of strokes) {
+    const drawColor = adaptColorForTheme(s.color, isDark);
     if (s.type === "freehand") {
       const drawn = getStroke(s.points, { size: s.size, thinning: s.tool === "highlighter" ? 0 : 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: true });
       const pathData = getSvgPathFromStroke(drawn);
       if (!pathData) continue;
-      ctx.save(); ctx.globalAlpha = s.opacity ?? 1; ctx.fillStyle = s.color; ctx.fill(new Path2D(pathData)); ctx.restore();
+      ctx.save(); ctx.globalAlpha = s.opacity ?? 1; ctx.fillStyle = drawColor; ctx.fill(new Path2D(pathData)); ctx.restore();
     } else if (s.type === "shape") {
-      ctx.save(); ctx.strokeStyle = s.color; ctx.lineWidth = s.size; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.save(); ctx.strokeStyle = drawColor; ctx.lineWidth = s.size; ctx.lineCap = "round"; ctx.lineJoin = "round";
       const { start, end } = s;
       if (s.tool === "rectangle") ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
       else if (s.tool === "circle") { const r = Math.hypot(end.x - start.x, end.y - start.y); ctx.beginPath(); ctx.arc(start.x, start.y, r, 0, Math.PI * 2); ctx.stroke(); }
@@ -121,8 +177,8 @@ export const PaintCanvas = () => {
   const redraw = useCallback((strokes, bgColor) => {
     const canvas = canvasRef.current; const ctx = getCtx();
     if (!canvas || !ctx) return;
-    renderStrokes(ctx, canvas, strokes ?? getCurrentStrokes(), bgColor ?? backgroundColor);
-  }, [getCtx, getCurrentStrokes, backgroundColor]);
+    renderStrokes(ctx, canvas, strokes ?? getCurrentStrokes(), bgColor ?? backgroundColor, theme === "dark");
+  }, [getCtx, getCurrentStrokes, backgroundColor, theme]);
 
   const yjsSyncTimerRef = useRef(null);
   const isSyncingRef = useRef(false);
@@ -177,7 +233,7 @@ export const PaintCanvas = () => {
     const ctx = getCtx(); const canvas = canvasRef.current;
     if (canvas && ctx && action.pageId === currentPageIdRef.current) {
       const strokes = allStrokesRef.current[action.pageId];
-      renderStrokes(ctx, canvas, strokes, backgroundColor);
+      renderStrokes(ctx, canvas, strokes, backgroundColor, theme === "dark");
       bumpVersion(); syncToYjs(strokes);
     }
   }, [getCtx, backgroundColor, syncToYjs, applyAction]);
@@ -190,7 +246,7 @@ export const PaintCanvas = () => {
     const ctx = getCtx(); const canvas = canvasRef.current;
     if (canvas && ctx && action.pageId === currentPageIdRef.current) {
       const strokes = allStrokesRef.current[action.pageId];
-      renderStrokes(ctx, canvas, strokes, backgroundColor);
+      renderStrokes(ctx, canvas, strokes, backgroundColor, theme === "dark");
       bumpVersion(); syncToYjs(strokes);
     }
   }, [getCtx, backgroundColor, syncToYjs, applyAction]);
@@ -306,7 +362,7 @@ export const PaintCanvas = () => {
       const remains = getCurrentStrokes().filter(s => {
         const hit = strokeHitTest(s, pos.x, pos.y, eraserRad); if(hit) erasedStrokesRef.current.push(s); return !hit;
       });
-      if (remains.length !== initialLen) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor); } // no Yjs sync yet! delay to Up.
+      if (remains.length !== initialLen) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor, theme === "dark"); } // no Yjs sync yet! delay to Up.
       return;
     }
     strokeInitialImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -333,7 +389,7 @@ export const PaintCanvas = () => {
     const canvas = canvasRef.current; const ctx = getCtx(); if (!canvas || !ctx) return;
     if (activeTool === "eraser") {
       const eraserRad = brushSize * 2; const remains = getCurrentStrokes().filter(s => { const hit = strokeHitTest(s, pos.x, pos.y, eraserRad); if(hit) erasedStrokesRef.current.push(s); return !hit; });
-      if (remains.length !== getCurrentStrokes().length) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor); }
+      if (remains.length !== getCurrentStrokes().length) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor, theme === "dark"); }
       lastPoint.current = pos; return;
     }
     if (!currentStrokeRef.current) return;
@@ -452,7 +508,7 @@ export const PaintCanvas = () => {
     delete allStrokesRef.current[pageId];
     if (pageId === currentPageIdRef.current) {
       const nextId = newPages[0].id; setCurrentPageId(nextId); currentPageIdRef.current = nextId;
-      const ctx = getCtx(), canvas = canvasRef.current; if (ctx && canvas) renderStrokes(ctx, canvas, allStrokesRef.current[nextId] ?? [], backgroundColor);
+      const ctx = getCtx(), canvas = canvasRef.current; if (ctx && canvas) renderStrokes(ctx, canvas, allStrokesRef.current[nextId] ?? [], backgroundColor, theme === "dark");
       undoStackRef.current = []; redoStackRef.current = []; bumpVersion();
     }
     setPages(newPages); if (pagesMap) { try { pagesMap.delete(`${pageId}_strokes`); } catch { } }
@@ -462,7 +518,7 @@ export const PaintCanvas = () => {
     if (pageId === currentPageIdRef.current) return;
     const canvas = canvasRef.current; if (canvas) setPages(prev => prev.map(p => p.id === currentPageIdRef.current ? { ...p, canvasData: canvas.toDataURL("image/webp", 0.7) } : p));
     setCurrentPageId(pageId); currentPageIdRef.current = pageId; undoStackRef.current = []; redoStackRef.current = []; bumpVersion();
-    const ctx = getCtx(); if (ctx && canvas) renderStrokes(ctx, canvas, allStrokesRef.current[pageId] ?? [], backgroundColor);
+    const ctx = getCtx(); if (ctx && canvas) renderStrokes(ctx, canvas, allStrokesRef.current[pageId] ?? [], backgroundColor, theme === "dark");
   };
 
   useEffect(() => {
