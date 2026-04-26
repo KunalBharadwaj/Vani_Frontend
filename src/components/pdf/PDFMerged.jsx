@@ -26,11 +26,12 @@ import {
   Hand,
   History,
   Eraser,
-  Menu, Sun, Moon, LogOut, PaintBucket, Copy, Check
+  Menu, Sun, Moon, LogOut, PaintBucket, Copy, Check, Mic, MicOff, Video, VideoOff
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
 import { Link } from 'react-router-dom';
+import { useMedia } from "@/context/MediaContext";
 
 // Configure PDF.js worker from public folder
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -63,6 +64,7 @@ const PDFMerged = () => {
   const [showMenu, setShowMenu] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { isAudioActive, toggleAudio, isVideoActive, toggleVideo } = useMedia();
   const searchString = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
   // Generate a room if none exists, but only if we are actively viewing the PDF section
@@ -672,7 +674,13 @@ const PDFMerged = () => {
         {/* Top-Right Tools */}
         <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
           <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
-          <button onClick={() => setShowDashboard(true)} className="flex items-center justify-center p-2 rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
+          <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isVideoActive ? 'bg-blue-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
+              {isVideoActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+          </button>
+          <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isAudioActive ? 'bg-green-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
+              {isAudioActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </button>
+          <button onClick={() => setShowDashboard(true)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
         </div>
 
 
@@ -758,7 +766,13 @@ const PDFMerged = () => {
         {/* Top-Right Tools */}
         <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
           <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
-          <button onClick={() => setShowDashboard(true)} className="flex items-center justify-center p-2 rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
+          <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isVideoActive ? 'bg-blue-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
+              {isVideoActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+          </button>
+          <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isAudioActive ? 'bg-green-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
+              {isAudioActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </button>
+          <button onClick={() => setShowDashboard(true)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
         </div>
 
       {/* Floating Top-Center UI */}

@@ -10,6 +10,8 @@ import React from "react";
 import Navigation from "@/components/Navigation";
 import Index from "./pages/Index";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { MediaProvider } from "@/context/MediaContext";
+import { VideoChat } from "@/components/shared/VideoChat";
 import NotFound from "./pages/NotFound";
 import { Login } from "./components/auth/Login";
 
@@ -93,7 +95,7 @@ const AuthWrapper = ({ children }) => {
           .then(data => {
             if (data?.token) setToken(data.token);
           })
-          .catch(() => {})
+          .catch(() => { })
           .finally(() => setLoading(false));
       });
   }, [searchParams, setSearchParams]);
@@ -117,18 +119,21 @@ const App = () => (
         {/* BrowserRouter handles client-side navigation between pages */}
         <BrowserRouter>
           <AuthWrapper>
-            <Navigation />
-            <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
-              <Routes>
-                {/* Placeholder routes - actual pages are always mounted below */}
-                <Route path="/" element={<div />} />
-                <Route path="/pdf" element={<div />} />
-                {/* Catch-all fallback for unknown routes */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-              {/* Always-mounted pages, shown/hidden based on route */}
-              <PersistentPages />
-            </Suspense>
+            <MediaProvider>
+              <Navigation />
+              <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+                <Routes>
+                  {/* Placeholder routes - actual pages are always mounted below */}
+                  <Route path="/" element={<div />} />
+                  <Route path="/pdf" element={<div />} />
+                  {/* Catch-all fallback for unknown routes */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+                {/* Always-mounted pages, shown/hidden based on route */}
+                <PersistentPages />
+              </Suspense>
+              <VideoChat />
+            </MediaProvider>
           </AuthWrapper>
         </BrowserRouter>
       </TooltipProvider>
