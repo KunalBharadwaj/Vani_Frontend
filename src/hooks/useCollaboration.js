@@ -19,80 +19,94 @@ export function useCollaboration(roomId, token) {
       const doc = new Y.Doc();
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://vani-backend-mjsl.onrender.com';
       const wsUrl = backendUrl.replace('http', 'ws');
-      const ws = new WebSocket(`${wsUrl}/?token=${token}`);
-      ws.binaryType = "arraybuffer";
       
       connection = {
         doc,
-        ws,
+        ws: null,
         status: "disconnected",
         roomState: { hostId: null, ownerId: null, users: [] },
         refs: 0,
-        listeners: new Set()
+        listeners: new Set(),
+        reconnectAttempts: 0,
+        heartbeatInterval: null,
       };
       roomConnections.set(roomId, connection);
 
-      ws.onopen = () => {
-        connection.status = "connected";
-        connection.listeners.forEach(l => l("connected", connection.roomState));
-        ws.send(JSON.stringify({ type: "join", roomId }));
-      };
+      const connectWs = () => {
+        // A-2: Do not send token in URL
+        const ws = new WebSocket(`${wsUrl}`);
+        ws.binaryType = "arraybuffer";
+        connection.ws = ws;
 
-      ws.onmessage = (event) => {
-        if (event.data instanceof ArrayBuffer) {
-          const raw = new Uint8Array(event.data);
-          try {
-              Y.applyUpdate(doc, raw, "remote");
-          } catch(err) {
-            console.error("Yjs update parsing error:", err);
+        ws.onopen = () => {
+          connection.reconnectAttempts = 0;
+          // Send explicit auth payload first
+          ws.send(JSON.stringify({ type: "auth", token }));
+        };
+
+        ws.onmessage = (event) => {
+          if (event.data instanceof ArrayBuffer) {
+            const raw = new Uint8Array(event.data);
+            try { Y.applyUpdate(doc, raw, "remote"); } catch(e) {}
+          } else if (typeof event.data === "string") {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.type === "auth_success") {
+                connection.status = "connected";
+                connection.listeners.forEach(l => l("connected", connection.roomState));
+                ws.send(JSON.stringify({ type: "join", roomId }));
+              }
+              else if (data.type === "room:state") {
+                connection.roomState = { hostId: data.hostId, ownerId: data.ownerId, users: data.users || [] };
+                connection.listeners.forEach(l => l(connection.status, connection.roomState));
+              } else if (data.type === "sync_step_2") {
+                const buffer = Uint8Array.from(atob(data.updateBase64), c => c.charCodeAt(0));
+                Y.applyUpdate(doc, buffer, "remote");
+              }
+            } catch (e) { console.error("Failed to parse websocket message", e); }
           }
-        } else if (typeof event.data === "string") {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === "room:state") {
-              connection.roomState = { hostId: data.hostId, ownerId: data.ownerId, users: data.users || [] };
-              connection.listeners.forEach(l => l(connection.status, connection.roomState));
-            } else if (data.type === "sync_step_2") {
-              // Receive full sync update via base64 encoded string
-              const buffer = Uint8Array.from(atob(data.updateBase64), c => c.charCodeAt(0));
-              Y.applyUpdate(doc, buffer, "remote");
-            }
-          } catch (e) {
-            console.error("Failed to parse websocket message", e);
+        };
+
+        ws.onclose = () => {
+          if (connection.heartbeatInterval) clearInterval(connection.heartbeatInterval);
+          if (connection.refs > 0) {
+            // B-1: Exponential backoff reconnect
+            connection.status = "reconnecting";
+            connection.listeners.forEach(l => l("reconnecting", connection.roomState));
+            const delay = Math.min(1000 * Math.pow(1.5, connection.reconnectAttempts), 10000);
+            connection.reconnectAttempts++;
+            setTimeout(connectWs, delay);
+          } else {
+            connection.status = "disconnected";
+            connection.listeners.forEach(l => l("disconnected", connection.roomState));
+            roomConnections.delete(roomId);
           }
-        }
+        };
+
+        const handleUpdate = (update, origin) => {
+          if (origin !== "remote" && ws.readyState === WebSocket.OPEN) {
+            ws.send(update);
+          }
+        };
+        doc.on("update", handleUpdate);
+
+        connection.heartbeatInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN && connection.status === "connected") {
+            const sv = Y.encodeStateVector(doc);
+            let binary = '';
+            for (let i = 0; i < sv.length; i++) binary += String.fromCharCode(sv[i]);
+            ws.send(JSON.stringify({ type: "sync_step_1", svBase64: btoa(binary) }));
+          }
+        }, 10000);
       };
 
-      ws.onclose = () => {
-        if (connection.heartbeatInterval) clearInterval(connection.heartbeatInterval);
-        connection.status = "disconnected";
-        connection.roomState = { hostId: null, ownerId: null, users: [] };
-        connection.listeners.forEach(l => l("disconnected", connection.roomState));
-        roomConnections.delete(roomId);
-      };
-
-      const handleUpdate = (update, origin) => {
-        if (origin !== "remote" && ws.readyState === WebSocket.OPEN) {
-          ws.send(update);
-        }
-      };
-      
-      // Heartbeat Sync Protocol - 10s interval
-      // Requests minimal diffs strictly missing from local state vector
-      connection.heartbeatInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          const sv = Y.encodeStateVector(doc);
-          const svBase64 = btoa(String.fromCharCode(...sv));
-          ws.send(JSON.stringify({ type: "sync_step_1", svBase64 }));
-        }
-      }, 10000);
-      doc.on("update", handleUpdate);
+      connectWs();
     } // -- end of initialization --
 
     // Increment ref count
     connection.refs++;
 
-    wsRef.current = connection.ws;
+    wsRef.current = connection;
     setYdoc(connection.doc);
     setStatus(connection.status);
     setRoomState(connection.roomState);
@@ -123,8 +137,8 @@ export function useCollaboration(roomId, token) {
     status,
     roomState,
     sendWsMessage: (msg) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(msg));
+        if (wsRef.current && wsRef.current.ws && wsRef.current.ws.readyState === WebSocket.OPEN) {
+            wsRef.current.ws.send(JSON.stringify(msg));
         }
     }
   };

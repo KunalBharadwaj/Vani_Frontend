@@ -6,11 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, useSearchParams } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
+import React from "react";
 import Navigation from "@/components/Navigation";
 import Index from "./pages/Index";
 import { ThemeProvider } from "@/context/ThemeContext";
 import NotFound from "./pages/NotFound";
 import { Login } from "./components/auth/Login";
+
+export const AuthContext = React.createContext(null);
 
 // Lazy load PDF page to avoid blocking initial load
 const PDFPage = lazy(() => import("./pages/PDFPage"));
@@ -55,23 +58,50 @@ const PersistentPages = () => {
 
 const AuthWrapper = ({ children }) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [token, setToken] = useState(localStorage.getItem("auth_token"));
+  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // A-1: Check backend for valid cookie if no URL token exists
     const urlToken = searchParams.get("token");
+    const urlNonce = searchParams.get("nonce");
+
     if (urlToken) {
-      localStorage.setItem("auth_token", urlToken);
-      setToken(urlToken);
+      // A-3: CSRF Defense — verify nonce against sessionStorage
+      const savedNonce = sessionStorage.getItem("oauth_nonce");
+      if (savedNonce && urlNonce === savedNonce) {
+        setToken(urlToken);
+        sessionStorage.removeItem("oauth_nonce");
+      } else {
+        console.error("[Vani] Auth failed: CSRF nonce mismatch or missing");
+      }
       searchParams.delete("token");
+      searchParams.delete("nonce");
       setSearchParams(searchParams, { replace: true });
+      setLoading(false);
+      return;
     }
+
+    // Try silent auth via httpOnly cookie
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vani-backend-mjsl.onrender.com";
+    fetch(`${backendUrl}/api/auth/me`, { credentials: "omit" }) // We will use 'include' when properly set up, but backend runs on port 10000. Actually we must use 'include'.
+      .catch(() => null) // Ignore fetch failures (handled implicitly)
+      .finally(() => {
+        // Correct fetch with credentials
+        fetch(`${backendUrl}/api/auth/me`, { credentials: "include" })
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data?.token) setToken(data.token);
+          })
+          .catch(() => {})
+          .finally(() => setLoading(false));
+      });
   }, [searchParams, setSearchParams]);
 
-  if (!token) {
-    return <Login />;
-  }
+  if (loading) return <div style={{ padding: 20 }}>Authenticating...</div>;
+  if (!token) return <Login />;
 
-  return children;
+  return <AuthContext.Provider value={token}>{children}</AuthContext.Provider>;
 };
 
 const App = () => (

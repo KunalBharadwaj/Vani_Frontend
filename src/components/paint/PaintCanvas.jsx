@@ -10,8 +10,11 @@ import { useCollaboration } from "@/hooks/useCollaboration";
 import { useSearchParams, Link } from "react-router-dom";
 import { Users, Menu, Plus, X, Undo2, Redo2, Save, Download, Sun, Moon, LogOut, FileText, PaintBucket, Copy, Check } from "lucide-react";
 import { RoomDashboard } from "@/components/shared/RoomDashboard";
+import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
+import { AuthContext } from "@/App";
 import { getStroke } from "perfect-freehand";
 import { useTheme } from "@/context/ThemeContext";
+import { useContext } from "react";
 
 function getSvgPathFromStroke(stroke) {
   if (!stroke.length) return "";
@@ -63,20 +66,26 @@ function hslToHex(h, s, l) {
   return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
 }
 
+const themeColorCache = new Map();
+
 // Returns an adapted color visible on the current theme background without modifying the original.
 function adaptColorForTheme(color, isDark) {
   if (!color || !color.startsWith('#')) return color;
+  const cacheKey = color + (isDark ? '-dark' : '-light');
+  if (themeColorCache.has(cacheKey)) return themeColorCache.get(cacheKey);
+
+  let result = color;
   try {
     const { h, s, l } = hexToHsl(color);
     if (isDark) {
-      // Dark background: if the stroke is too dark (black, navy, dark grey…), lighten it significantly.
-      if (l < 45) return hslToHex(h, Math.min(s + 10, 100), Math.max(l + 55, 75));
+      if (l < 45) result = hslToHex(h, Math.min(s + 10, 100), Math.max(l + 55, 75));
     } else {
-      // Light background: if the stroke is too light (white, pale yellow…), darken it.
-      if (l > 75) return hslToHex(h, Math.min(s + 10, 100), Math.min(l - 50, 35));
+      if (l > 75) result = hslToHex(h, Math.min(s + 10, 100), Math.min(l - 50, 35));
     }
   } catch { /* malformed color — fall through */ }
-  return color; // original color is already fine for this theme
+  
+  themeColorCache.set(cacheKey, result);
+  return result;
 }
 
 function renderStrokes(ctx, canvas, strokes, bgColor, isDark = false) {
@@ -85,10 +94,12 @@ function renderStrokes(ctx, canvas, strokes, bgColor, isDark = false) {
   for (const s of strokes) {
     const drawColor = adaptColorForTheme(s.color, isDark);
     if (s.type === "freehand") {
-      const drawn = getStroke(s.points, { size: s.size, thinning: s.tool === "highlighter" ? 0 : 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: true });
-      const pathData = getSvgPathFromStroke(drawn);
-      if (!pathData) continue;
-      ctx.save(); ctx.globalAlpha = s.opacity ?? 1; ctx.fillStyle = drawColor; ctx.fill(new Path2D(pathData)); ctx.restore();
+      if (!s._path) {
+        const drawn = getStroke(s.points, { size: s.size, thinning: s.tool === "highlighter" ? 0 : 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: true });
+        s._path = getSvgPathFromStroke(drawn);
+      }
+      if (!s._path) continue;
+      ctx.save(); ctx.globalAlpha = s.opacity ?? 1; ctx.fillStyle = drawColor; ctx.fill(new Path2D(s._path)); ctx.restore();
     } else if (s.type === "shape") {
       ctx.save(); ctx.strokeStyle = drawColor; ctx.lineWidth = s.size; ctx.lineCap = "round"; ctx.lineJoin = "round";
       const { start, end } = s;
@@ -97,8 +108,11 @@ function renderStrokes(ctx, canvas, strokes, bgColor, isDark = false) {
       else { ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke(); }
       ctx.restore();
     } else if (s.type === "snapshot") {
-      const img = new Image(); img.src = s.data;
-      if (img.complete) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = s.data;
+      // If already cached by the browser, onload may not fire — handle both
+      if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     }
   }
 }
@@ -118,10 +132,17 @@ function strokeHitTest(stroke, px, py, eraserRadius) {
 }
 
 function compactStrokes(strokes) {
-  return strokes.map((s) => s.type === "freehand" ? { ...s, points: s.points.map(([x, y, p]) => [Math.round(x * 2) / 2, Math.round(y * 2) / 2, Math.round(p * 100) / 100]) } : s);
+  return strokes.map((s) => {
+    if (s.type === "freehand") {
+      const { _path, ...rest } = s; // D-1: strip internal path cache before syncing
+      return { ...rest, points: rest.points.map(([x, y, p]) => [Math.round(x * 2) / 2, Math.round(y * 2) / 2, Math.round(p * 100) / 100]) };
+    }
+    return s;
+  });
 }
 
-let _sid = 0; const newId = () => `s${Date.now()}_${_sid++}`;
+// Use crypto.randomUUID() for collision-safe stroke IDs across tabs/clients/reloads
+const newId = () => crypto.randomUUID();
 
 export const PaintCanvas = () => {
   const canvasRef = useRef(null);
@@ -145,7 +166,7 @@ export const PaintCanvas = () => {
   }, [theme]);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const token = localStorage.getItem("auth_token");
+  const token = useContext(AuthContext);
   const roomId = searchParams.get("room");
   const searchString = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const { pagesMap, status, roomState, sendWsMessage } = useCollaboration(roomId, token);
@@ -165,10 +186,10 @@ export const PaintCanvas = () => {
   const currentPageIdRef = useRef("page-1");
 
   const allStrokesRef = useRef({ "page-1": [] });
-  const undoStackRef = useRef([]);
-  const redoStackRef = useRef([]);
+  const undoStackRef = useRef({ "page-1": [] });
+  const redoStackRef = useRef({ "page-1": [] });
   const [stackVersion, setStackVersion] = useState(0);
-  const bumpVersion = () => setStackVersion((v) => v + 1);
+  const bumpVersion = useCallback(() => setStackVersion(v => v + 1), []);
 
   const getCurrentStrokes = useCallback(() => allStrokesRef.current[currentPageIdRef.current] ?? [], []);
   const setCurrentStrokes = useCallback((strokes) => { allStrokesRef.current[currentPageIdRef.current] = strokes; }, []);
@@ -183,73 +204,91 @@ export const PaintCanvas = () => {
   const yjsSyncTimerRef = useRef(null);
   const isSyncingRef = useRef(false);
   const isInitialized = useRef(false);
+  // B-4: Stable ref so pagesMap observer always reads latest backgroundColor
+  // without the effect needing to tear down and re-register on every theme change.
+  const bgColorRef = useRef(backgroundColor);
+  useEffect(() => { bgColorRef.current = backgroundColor; }, [backgroundColor]);
 
   const syncToYjs = useCallback((strokes) => {
     if (!pagesMap || !isInitialized.current) return;
     clearTimeout(yjsSyncTimerRef.current);
     yjsSyncTimerRef.current = setTimeout(() => {
+      isSyncingRef.current = true;
       try {
         const payload = JSON.stringify(compactStrokes(strokes ?? getCurrentStrokes()));
-        isSyncingRef.current = true;
         pagesMap.set(`${currentPageIdRef.current}_strokes`, payload);
+      } catch (e) {
+        console.error('[Vani] syncToYjs error:', e);
+      } finally {
         isSyncingRef.current = false;
-      } catch (e) { console.error("Yjs error", e); }
+      }
     }, 150);
   }, [pagesMap, getCurrentStrokes]);
 
   const syncPagesList = useCallback((pagesList) => {
     if (!pagesMap || !isInitialized.current) return;
-    try { isSyncingRef.current = true; pagesMap.set("pagesList", JSON.stringify(pagesList.map((p) => ({ id: p.id, name: p.name })))); isSyncingRef.current = false; } catch (e) { }
+    isSyncingRef.current = true;
+    try {
+      pagesMap.set("pagesList", JSON.stringify(pagesList.map((p) => ({ id: p.id, name: p.name }))));
+    } catch (e) {
+      console.error('[Vani] syncPagesList error:', e);
+    } finally {
+      isSyncingRef.current = false;
+    }
   }, [pagesMap]);
 
   // LOCAL UNDO/REDO LOGIC
   const pushUndoAction = useCallback((action) => {
-    undoStackRef.current.push({ pageId: currentPageIdRef.current, ...action });
-    if (undoStackRef.current.length > 50) undoStackRef.current.shift();
-    redoStackRef.current = [];
+    const pId = currentPageIdRef.current;
+    if (!undoStackRef.current[pId]) undoStackRef.current[pId] = [];
+    undoStackRef.current[pId].push({ pageId: pId, ...action });
+    if (undoStackRef.current[pId].length > 50) undoStackRef.current[pId].shift(); // O(N) but N=50 max, negligible
+    redoStackRef.current[pId] = [];
     bumpVersion();
   }, []);
 
   const applyAction = useCallback((action, reverse = false) => {
     const isAdd = action.type === "add";
     const shouldAdd = reverse ? !isAdd : isAdd;
-    const current = [...allStrokesRef.current[action.pageId]];
+    const current = [...(allStrokesRef.current[action.pageId] || [])];
     
     if (shouldAdd) {
-      // Adding back strokes
       allStrokesRef.current[action.pageId] = [...current, ...action.strokes];
     } else {
-      // Removing strokes
       const idsToRemove = new Set(action.strokes.map(s => s.id));
       allStrokesRef.current[action.pageId] = current.filter(s => !idsToRemove.has(s.id));
     }
   }, []);
 
   const handleUndo = useCallback(() => {
-    if (undoStackRef.current.length === 0) return;
-    const action = undoStackRef.current.pop();
-    redoStackRef.current.push(action);
+    const pId = currentPageIdRef.current;
+    if (!undoStackRef.current[pId] || undoStackRef.current[pId].length === 0) return;
+    const action = undoStackRef.current[pId].pop();
+    if (!redoStackRef.current[pId]) redoStackRef.current[pId] = [];
+    redoStackRef.current[pId].push(action);
     applyAction(action, true); // reverse
     const ctx = getCtx(); const canvas = canvasRef.current;
-    if (canvas && ctx && action.pageId === currentPageIdRef.current) {
+    if (canvas && ctx && action.pageId === pId) {
       const strokes = allStrokesRef.current[action.pageId];
-      renderStrokes(ctx, canvas, strokes, backgroundColor, theme === "dark");
+      renderStrokes(ctx, canvas, strokes, bgColorRef.current, theme === "dark");
       bumpVersion(); syncToYjs(strokes);
     }
-  }, [getCtx, backgroundColor, syncToYjs, applyAction]);
+  }, [getCtx, theme, syncToYjs, applyAction]);
 
   const handleRedo = useCallback(() => {
-    if (redoStackRef.current.length === 0) return;
-    const action = redoStackRef.current.pop();
-    undoStackRef.current.push(action);
+    const pId = currentPageIdRef.current;
+    if (!redoStackRef.current[pId] || redoStackRef.current[pId].length === 0) return;
+    const action = redoStackRef.current[pId].pop();
+    if (!undoStackRef.current[pId]) undoStackRef.current[pId] = [];
+    undoStackRef.current[pId].push(action);
     applyAction(action, false); // normal
     const ctx = getCtx(); const canvas = canvasRef.current;
-    if (canvas && ctx && action.pageId === currentPageIdRef.current) {
+    if (canvas && ctx && action.pageId === pId) {
       const strokes = allStrokesRef.current[action.pageId];
-      renderStrokes(ctx, canvas, strokes, backgroundColor, theme === "dark");
+      renderStrokes(ctx, canvas, strokes, bgColorRef.current, theme === "dark");
       bumpVersion(); syncToYjs(strokes);
     }
-  }, [getCtx, backgroundColor, syncToYjs, applyAction]);
+  }, [getCtx, theme, syncToYjs, applyAction]);
 
   useEffect(() => {
     const canvas = canvasRef.current; const container = containerRef.current; if (!canvas || !container) return;
@@ -271,17 +310,17 @@ export const PaintCanvas = () => {
         const remotePagesRaw = JSON.parse(existingList);
         remotePagesRaw.forEach((p) => { if (!allStrokesRef.current[p.id]) allStrokesRef.current[p.id] = []; });
         setPages(remotePagesRaw);
-      } catch { }
+      } catch (e) { console.error('[Vani] Failed to parse remote pagesList:', e); }
     }
     Array.from(pagesMap.keys()).forEach(key => {
       if (key.endsWith("_strokes")) {
         const pageIdForStroke = key.replace("_strokes", "");
         try {
           allStrokesRef.current[pageIdForStroke] = JSON.parse(pagesMap.get(key));
-        } catch { }
+        } catch (e) { console.error('[Vani] Failed to parse initial strokes for', pageIdForStroke, e); }
       }
     });
-    redraw(allStrokesRef.current[currentPageIdRef.current] ?? [], backgroundColor);
+    redraw(allStrokesRef.current[currentPageIdRef.current] ?? [], bgColorRef.current);
 
     const observer = (event) => {
       if (event.keysChanged?.has("pagesList")) {
@@ -293,9 +332,9 @@ export const PaintCanvas = () => {
             setPages(remotePages);
             if (!remotePages.find(p => p.id === currentPageIdRef.current) && remotePages.length > 0) {
               const firstId = remotePages[0].id; currentPageIdRef.current = firstId; setCurrentPageId(firstId);
-              redraw(allStrokesRef.current[firstId] ?? [], backgroundColor);
+              redraw(allStrokesRef.current[firstId] ?? [], bgColorRef.current);
             }
-          } catch { }
+          } catch (e) { console.error('[Vani] Failed to parse remote pagesList update:', e); }
         }
       }
       if (!isSyncingRef.current && event.keysChanged) {
@@ -308,16 +347,16 @@ export const PaintCanvas = () => {
                 const remoteStrokes = JSON.parse(payload);
                 allStrokesRef.current[pageIdForStroke] = remoteStrokes;
                 if (pageIdForStroke === currentPageIdRef.current) {
-                  redraw(remoteStrokes, backgroundColor);
+                  redraw(remoteStrokes, bgColorRef.current);
                 }
-              } catch { }
+              } catch (e) { console.error('[Vani] Failed to parse remote strokes for', pageIdForStroke, e); }
             }
           }
         });
       }
     };
     pagesMap.observe(observer); return () => pagesMap.unobserve(observer);
-  }, [pagesMap, backgroundColor]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pagesMap]); // bgColorRef is a stable ref, not a state — safe to omit from deps
 
   const prevBgRef = useRef(backgroundColor);
   useEffect(() => {
@@ -327,6 +366,9 @@ export const PaintCanvas = () => {
   }, [backgroundColor, redraw]);
 
   const isDrawing = useRef(false); const currentStrokeRef = useRef(null); const erasedStrokesRef = useRef([]);
+  // C-2: Track erased IDs in a Set so pointerMove won't re-erase strokes that
+  // setCurrentStrokes() hasn't flushed yet due to React state batching.
+  const erasedStrokeIdsRef = useRef(new Set());
   const startPoint = useRef(null); const lastPoint = useRef(null); const strokeInitialImageRef = useRef(null);
   const [importedImage, setImportedImage] = useState(null); const [imagePos, setImagePos] = useState({ x: 0, y: 0 }); const [imageDim, setImageDim] = useState({ width: 0, height: 0 });
   const dragMode = useRef(null); const backupFileRef = useRef(null);
@@ -356,13 +398,17 @@ export const PaintCanvas = () => {
       else if (pos.x >= x2-hs && pos.x <= x2+hs && pos.y >= y2-hs && pos.y <= y2+hs) dragMode.current = "se";
       else if (pos.x > x1 && pos.x < x2 && pos.y > y1 && pos.y < y2) dragMode.current = "move";
     }
-    isDrawing.current = true; lastPoint.current = pos; startPoint.current = pos; erasedStrokesRef.current = [];
+    isDrawing.current = true; lastPoint.current = pos; startPoint.current = pos;
+    erasedStrokesRef.current = []; erasedStrokeIdsRef.current = new Set(); // reset for new gesture
     if (activeTool === "eraser") {
       const eraserRad = brushSize * 2; const initialLen = getCurrentStrokes().length;
       const remains = getCurrentStrokes().filter(s => {
-        const hit = strokeHitTest(s, pos.x, pos.y, eraserRad); if(hit) erasedStrokesRef.current.push(s); return !hit;
+        if (erasedStrokeIdsRef.current.has(s.id)) return false; // skip already erased
+        const hit = strokeHitTest(s, pos.x, pos.y, eraserRad);
+        if (hit) { erasedStrokesRef.current.push(s); erasedStrokeIdsRef.current.add(s.id); }
+        return !hit;
       });
-      if (remains.length !== initialLen) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor, theme === "dark"); } // no Yjs sync yet! delay to Up.
+      if (remains.length !== initialLen) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor, theme === "dark"); }
       return;
     }
     strokeInitialImageRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -388,7 +434,13 @@ export const PaintCanvas = () => {
     const pos = getPointerPos(e); if (!pos) return;
     const canvas = canvasRef.current; const ctx = getCtx(); if (!canvas || !ctx) return;
     if (activeTool === "eraser") {
-      const eraserRad = brushSize * 2; const remains = getCurrentStrokes().filter(s => { const hit = strokeHitTest(s, pos.x, pos.y, eraserRad); if(hit) erasedStrokesRef.current.push(s); return !hit; });
+      const eraserRad = brushSize * 2;
+      const remains = getCurrentStrokes().filter(s => {
+        if (erasedStrokeIdsRef.current.has(s.id)) return false; // skip already-erased
+        const hit = strokeHitTest(s, pos.x, pos.y, eraserRad);
+        if (hit) { erasedStrokesRef.current.push(s); erasedStrokeIdsRef.current.add(s.id); }
+        return !hit;
+      });
       if (remains.length !== getCurrentStrokes().length) { setCurrentStrokes(remains); renderStrokes(ctx, canvas, remains, backgroundColor, theme === "dark"); }
       lastPoint.current = pos; return;
     }
@@ -435,12 +487,15 @@ export const PaintCanvas = () => {
     const pi = (Math.floor(pos.y) * width + Math.floor(pos.x)) * 4, tc = { r: data[pi], g: data[pi+1], b: data[pi+2], a: data[pi+3] }, nc = hexToRgb(activeColor);
     if (!nc || (tc.r === nc.r && tc.g === nc.g && tc.b === nc.b)) return;
     const q = [[Math.floor(pos.x), Math.floor(pos.y)]], visited = new Set();
-    while (q.length > 0) {
-      const [cx, cy] = q.shift(), key = `${cx},${cy}`;
+    let head = 0;
+    while (head < q.length) {
+      const [cx, cy] = q[head++];
+      const key = `${cx},${cy}`;
       if (visited.has(key) || cx < 0 || cy < 0 || cx >= width || cy >= height) continue;
       visited.add(key); const idx = (cy * width + cx) * 4;
       if (Math.abs(data[idx]-tc.r)<15 && Math.abs(data[idx+1]-tc.g)<15 && Math.abs(data[idx+2]-tc.b)<15) {
         data[idx] = nc.r; data[idx+1] = nc.g; data[idx+2] = nc.b; data[idx+3] = 255;
+        // D-3: array push is amortized O(1), no shifting required
         q.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
       }
     }
@@ -498,7 +553,7 @@ export const PaintCanvas = () => {
   const handleAddPage = () => {
     const newId = `page-${Date.now()}`; const newPages = [...pages, { id: newId, name: `Page ${pages.length + 1}` }];
     allStrokesRef.current[newId] = []; setPages(newPages); setCurrentPageId(newId); currentPageIdRef.current = newId;
-    undoStackRef.current = []; redoStackRef.current = []; bumpVersion();
+    bumpVersion();
     const ctx = getCtx(), canvas = canvasRef.current; if (ctx && canvas) { ctx.fillStyle = backgroundColor; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     syncPagesList(newPages); toast.success("New page");
   };
@@ -509,16 +564,25 @@ export const PaintCanvas = () => {
     if (pageId === currentPageIdRef.current) {
       const nextId = newPages[0].id; setCurrentPageId(nextId); currentPageIdRef.current = nextId;
       const ctx = getCtx(), canvas = canvasRef.current; if (ctx && canvas) renderStrokes(ctx, canvas, allStrokesRef.current[nextId] ?? [], backgroundColor, theme === "dark");
-      undoStackRef.current = []; redoStackRef.current = []; bumpVersion();
+      bumpVersion();
     }
-    setPages(newPages); if (pagesMap) { try { pagesMap.delete(`${pageId}_strokes`); } catch { } }
+    setPages(newPages);
+    if (pagesMap) {
+      try { pagesMap.delete(`${pageId}_strokes`); }
+      catch (e) { console.error('[Vani] Failed to delete page strokes from Yjs:', e); }
+    }
     syncPagesList(newPages); toast.success("Deleted");
   };
   const handleSwitchPage = (pageId) => {
     if (pageId === currentPageIdRef.current) return;
-    const canvas = canvasRef.current; if (canvas) setPages(prev => prev.map(p => p.id === currentPageIdRef.current ? { ...p, canvasData: canvas.toDataURL("image/webp", 0.7) } : p));
-    setCurrentPageId(pageId); currentPageIdRef.current = pageId; undoStackRef.current = []; redoStackRef.current = []; bumpVersion();
-    const ctx = getCtx(); if (ctx && canvas) renderStrokes(ctx, canvas, allStrokesRef.current[pageId] ?? [], backgroundColor, theme === "dark");
+    setCurrentPageId(pageId);
+    currentPageIdRef.current = pageId;
+    bumpVersion();
+    // C-3: Read canvasRef.current again here — setCurrentPageId is async
+    // and the previous `canvas` capture may point to a stale layout.
+    const freshCanvas = canvasRef.current;
+    const ctx = getCtx();
+    if (ctx && freshCanvas) renderStrokes(ctx, freshCanvas, allStrokesRef.current[pageId] ?? [], backgroundColor, theme === "dark");
   };
 
   useEffect(() => {
@@ -531,10 +595,13 @@ export const PaintCanvas = () => {
     }; window.addEventListener("keydown", handleKeyDown); return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo, handleRedo, handleSave]);
 
-  const canUndo = undoStackRef.current.length > 0; const canRedo = redoStackRef.current.length > 0;
+  const canUndo = (undoStackRef.current[currentPageId] && undoStackRef.current[currentPageId].length > 0);
+  const canRedo = (redoStackRef.current[currentPageId] && redoStackRef.current[currentPageId].length > 0);
 
   return (
     <div className={`h-screen w-screen overflow-hidden ${theme === 'dark' ? 'bg-[#121212]' : 'bg-[#ffffff]'} relative font-sans select-none transition-colors duration-300`}>
+      {/* G-1: Offline/Reconnecting UI */}
+      <ConnectionBanner status={status} />
       <div className="absolute inset-0 z-0">
         <div ref={containerRef} className="w-full h-full">
           <canvas ref={canvasRef} className="w-full h-full" style={{ cursor: activeTool === "fill" ? "cell" : activeTool === "move" ? "move" : "crosshair" }} onMouseDown={handlePointerDown} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp} onTouchStart={handlePointerDown} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp} onClick={handleClick} />

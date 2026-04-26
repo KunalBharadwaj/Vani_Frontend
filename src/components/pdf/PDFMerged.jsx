@@ -1,8 +1,9 @@
 // PDF Viewer with collaborative sharing via Yjs.
 // When a user uploads a PDF, the file data is stored in a shared Yjs map
 // so all room members instantly see and can navigate the same document.
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useContext } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { AuthContext } from '@/App';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import { useSearchParams } from 'react-router-dom';
@@ -28,6 +29,7 @@ import {
   Menu, Sun, Moon, LogOut, PaintBucket, Copy, Check
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
 import { Link } from 'react-router-dom';
 
 // Configure PDF.js worker from public folder
@@ -50,7 +52,7 @@ const ANNOTATION_COLORS = [
 const PDFMerged = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
-  const token = localStorage.getItem('auth_token');
+  const token = useContext(AuthContext);
 
   // Stable room ID mapped directly from URL
   const roomId = searchParams.get('room');
@@ -85,6 +87,7 @@ const PDFMerged = () => {
   const [pdfDataUrl, setPdfDataUrl] = useState(null);
   const pdfDataUrlRef = useRef(null); // Always-fresh ref for use in Yjs observer (avoids stale closures)
   const [numPages, setNumPages] = useState(null);
+  const numPagesRef = useRef(null); // stable ref for observer closures
   const [scale, setScale] = useState(1.0);
   const [loading, setLoading] = useState(false);
   const [pdfFileName, setPdfFileName] = useState('');
@@ -111,7 +114,8 @@ const PDFMerged = () => {
   const scrollContainerRef = useRef(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, sL: 0, sT: 0 });
-  const [containerWidth, setContainerWidth] = useState(null);
+  // C-5: Initialize to reasonable width instead of null to prevent initial misalignment
+  const [containerWidth, setContainerWidth] = useState(window.innerWidth - 48);
 
   const fileInputRef = useRef(null);
   const isSyncingRef = useRef(false);  // prevent echo loops
@@ -121,15 +125,20 @@ const PDFMerged = () => {
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    let timeout;
     const ro = new ResizeObserver(entries => {
       const entry = entries[0];
       if (entry) {
-        // Subtract padding (p-6 = 24px each side = 48px total)
-        setContainerWidth(Math.floor(entry.contentRect.width) - 48);
+        // D-5: Debounce resize event 100ms
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          // Subtract padding (p-6 = 24px each side = 48px total)
+          setContainerWidth(Math.floor(entry.contentRect.width) - 48);
+        }, 100);
       }
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); clearTimeout(timeout); };
   }, []);
 
   // Block all scroll input (wheel, touch, scrollbar drag) for non-owners
@@ -201,23 +210,30 @@ const PDFMerged = () => {
         setPdfFileName(remoteName);
       }
       
-      // We expect numPages to be rendered and sized soon
-      // For any canvas changes available from Yjs:
-      for (let i = 1; i <= 50; i++) {
-          const rc = pdfMap.get(`canvasOverlay_${i}`);
+      // B-5: Only process canvasOverlay keys that actually changed in this transaction.
+      // This removes the hardcoded 50-page ceiling and avoids wasteful lookups.
+      if (event && event.keysChanged) {
+        event.keysChanged.forEach(key => {
+          if (!key.startsWith('canvasOverlay_')) return;
+          const i = parseInt(key.replace('canvasOverlay_', ''), 10);
+          if (!i || isNaN(i)) return;
+          const rc = pdfMap.get(key);
           if (rc !== undefined && rc !== lastRemoteCanvasOverlayRef.current[i]) {
-              lastRemoteCanvasOverlayRef.current[i] = rc;
-              const c = canvasRefs.current[i];
-              // Self-echo guard: skip if this canvas already matches
-              if (c && c.toDataURL('image/webp', 0.6) === rc) continue;
-              if (c) {
-                  applyRemoteCanvas(c, rc);
-              } else {
-                  setTimeout(() => {
-                      if (canvasRefs.current[i]) applyRemoteCanvas(canvasRefs.current[i], rc);
-                  }, 300);
-              }
+            lastRemoteCanvasOverlayRef.current[i] = rc;
+            const c = canvasRefs.current[i];
+            if (c && c.toDataURL('image/webp', 0.6) === rc) return; // self-echo
+            if (c) {
+              applyRemoteCanvas(c, rc);
+            } else {
+              // Canvas not mounted yet (page not in viewport) — retry after paint
+              const retryId = setTimeout(() => {
+                if (canvasRefs.current[i]) applyRemoteCanvas(canvasRefs.current[i], rc);
+              }, 300);
+              // No need to clear — one-shot
+              void retryId;
+            }
           }
+        });
       }
 
       // Detect explicit remote PDF removal: only clear if the 'pdfData' key
@@ -225,6 +241,7 @@ const PDFMerged = () => {
       if (event && event.keysChanged && event.keysChanged.has('pdfData') && !remotePdf) {
         setPdfDataUrl(null);
         setNumPages(null);
+        numPagesRef.current = null;
         setPdfFileName('');
       }
 
@@ -272,9 +289,14 @@ const PDFMerged = () => {
       // Push to Yjs so all room members get it
       if (pdfMap) {
         isSyncingRef.current = true;
-        pdfMap.set('pdfData', dataUrl);
-        pdfMap.set('fileName', file.name);
-        isSyncingRef.current = false;
+        try {
+          pdfMap.set('pdfData', dataUrl);
+          pdfMap.set('fileName', file.name);
+        } catch (e) {
+          console.error('[Vani] handleFileUpload Yjs error:', e);
+        } finally {
+          isSyncingRef.current = false;
+        }
       }
 
       // Record to Session History Database
@@ -303,6 +325,7 @@ const PDFMerged = () => {
   // ─── PDF loaded callback ────────────────────────────────────────
   const onDocumentLoadSuccess = ({ numPages: n }) => {
     setNumPages(n);
+    numPagesRef.current = n;
     setLoading(false);
   };
 
@@ -317,8 +340,13 @@ const PDFMerged = () => {
       if (newPage !== prev) {
         if (pdfMap) {
           isSyncingRef.current = true;
-          pdfMap.set('currentPage', newPage);
-          isSyncingRef.current = false;
+          try {
+            pdfMap.set('currentPage', newPage);
+          } catch (e) {
+            console.error('[Vani] changePage Yjs error:', e);
+          } finally {
+            isSyncingRef.current = false;
+          }
         }
         // Native scrolling has eliminated the need to swap static overlays here. 
         // Canvases are now persisted on the DOM alongside their respective pages.
@@ -347,10 +375,15 @@ const PDFMerged = () => {
     setPdfFileName('');
     if (pdfMap) {
       isSyncingRef.current = true;
-      pdfMap.delete('pdfData');
-      pdfMap.delete('fileName');
-      pdfMap.delete('currentPage');
-      isSyncingRef.current = false;
+      try {
+        pdfMap.delete('pdfData');
+        pdfMap.delete('fileName');
+        pdfMap.delete('currentPage');
+      } catch (e) {
+        console.error('[Vani] closePdf Yjs error:', e);
+      } finally {
+        isSyncingRef.current = false;
+      }
     }
     toast('PDF removed');
   }, [pdfMap]);
@@ -634,6 +667,8 @@ const PDFMerged = () => {
     return (
       <>
       <div className={`h-screen w-screen overflow-hidden ${theme === 'dark' ? 'bg-[#121212]' : 'bg-[#ffffff]'} relative font-sans transition-colors duration-300`}>
+        {/* G-1: Offline/Reconnecting UI */}
+        <ConnectionBanner status={status} />
         {/* Floating Top-Left Status + Menu */}
         <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
           <div className="relative">
@@ -712,6 +747,8 @@ const PDFMerged = () => {
 
   return (
       <div className={`h-screen w-screen overflow-hidden ${theme === 'dark' ? 'bg-[#121212]' : 'bg-[#ffffff]'} relative font-sans transition-colors duration-300`}>
+        {/* G-1: Offline/Reconnecting UI */}
+        <ConnectionBanner status={status} />
         {/* Floating Top-Left Status + Menu */}
         <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
           <div className="relative">
@@ -869,9 +906,14 @@ const PDFMerged = () => {
                if (now - lastScrollBroadcastRef.current > 50) {
                    lastScrollBroadcastRef.current = now;
                    isSyncingRef.current = true;
-                   pdfMap.set("scrollTop", e.target.scrollTop);
-                   pdfMap.set("scrollLeft", e.target.scrollLeft);
-                   isSyncingRef.current = false;
+                   try {
+                     pdfMap.set("scrollTop", e.target.scrollTop);
+                     pdfMap.set("scrollLeft", e.target.scrollLeft);
+                   } catch (e) {
+                     console.error('[Vani] scroll sync Yjs error:', e);
+                   } finally {
+                     isSyncingRef.current = false;
+                   }
                }
            }
         }}
@@ -898,6 +940,7 @@ const PDFMerged = () => {
                 <Page
                   pageNumber={index + 1}
                   scale={scale}
+                  width={containerWidth}
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
                   loading={
@@ -911,18 +954,23 @@ const PDFMerged = () => {
                     ref={(c) => {
                        if (c) {
                          canvasRefs.current[index + 1] = c;
-                         // Size canvas drawing surface to match display size
-                         requestAnimationFrame(() => {
+                         // G-2: Ensure canvas is sized after CSS layout completes
+                         let retries = 0;
+                         const sizeCanvas = () => {
                            const parent = c.parentElement;
-                           if (parent) {
-                             const w = parent.offsetWidth;
-                             const h = parent.offsetHeight;
-                             if (w > 0 && h > 0 && (c.width !== w || c.height !== h)) {
-                               c.width = w;
-                               c.height = h;
-                             }
+                           if (!parent) return;
+                           const w = parent.offsetWidth;
+                           const h = parent.offsetHeight;
+                           if (w === 0 || h === 0) {
+                             if (retries++ < 10) setTimeout(sizeCanvas, 100);
+                             return;
                            }
-                         });
+                           if (c.width !== w || c.height !== h) {
+                             c.width = w;
+                             c.height = h;
+                           }
+                         };
+                         requestAnimationFrame(sizeCanvas);
                        }
                     }}
                     data-page={index + 1}
