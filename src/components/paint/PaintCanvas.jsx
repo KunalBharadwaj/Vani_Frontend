@@ -8,13 +8,14 @@ import { toast } from "sonner";
 import { downloadCanvasAsPDF, downloadPagesAsPDF } from "@/services/storageService";
 import { useCollaboration } from "@/hooks/useCollaboration";
 import { useSearchParams, Link } from "react-router-dom";
-import { Users, Menu, Plus, X, Undo2, Redo2, Save, Download, Sun, Moon, LogOut, FileText, PaintBucket, Copy, Check } from "lucide-react";
+import { Users, Menu, Plus, X, Undo2, Redo2, Save, Download, Sun, Moon, LogOut, FileText, PaintBucket, Copy, Check, Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { RoomDashboard } from "@/components/shared/RoomDashboard";
 import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
 import { AuthContext } from "@/App";
 import { getStroke } from "perfect-freehand";
 import { useTheme } from "@/context/ThemeContext";
 import { useContext } from "react";
+import { useMedia } from "@/context/MediaContext";
 
 function getSvgPathFromStroke(stroke) {
   if (!stroke.length) return "";
@@ -148,6 +149,7 @@ export const PaintCanvas = () => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const { theme, toggleTheme } = useTheme();
+  const { isAudioActive, toggleAudio, isVideoActive, toggleVideo } = useMedia();
 
   const [activeTool, setActiveTool] = useState("pencil");
   const [activeColor, setActiveColor] = useState(theme === "dark" ? "#ffffff" : "#000000");
@@ -630,9 +632,15 @@ export const PaintCanvas = () => {
         <button onClick={handleRedo} disabled={!canRedo} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/15 text-toolbar-foreground hover:bg-toolbar-hover disabled:opacity-30 transition-colors shadow-sm"><Redo2 className="w-4 h-4" /></button>
       </div>
 
-      {/* ── Top-Right: Dashboard ───────────────────────────────────────────── */}
+      {/* ── Top-Right: Dashboard & Streams ───────────────────────────────────────────── */}
       <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
         <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
+        <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isVideoActive ? 'bg-blue-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
+            {isVideoActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+        </button>
+        <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isAudioActive ? 'bg-green-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
+            {isAudioActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+        </button>
         <button onClick={() => setShowDashboard(true)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Collaboration Dashboard"><Users className="w-4 h-4" /></button>
       </div>
 

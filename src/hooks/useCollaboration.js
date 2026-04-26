@@ -4,11 +4,16 @@ import * as Y from "yjs";
 // Global cache to prevent multiple WebSocket connections per room
 const roomConnections = new Map();
 
-export function useCollaboration(roomId, token) {
+export function useCollaboration(roomId, token, onMessage = null) {
   const [ydoc, setYdoc] = useState(null);
   const [status, setStatus] = useState("disconnected");
   const [roomState, setRoomState] = useState({ hostId: null, ownerId: null, users: [] });
   const wsRef = useRef(null);
+  const onMessageRef = useRef(onMessage);
+
+  useEffect(() => {
+     onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   useEffect(() => {
     if (!roomId || !token) return;
@@ -58,10 +63,13 @@ export function useCollaboration(roomId, token) {
               }
               else if (data.type === "room:state") {
                 connection.roomState = { hostId: data.hostId, ownerId: data.ownerId, users: data.users || [] };
-                connection.listeners.forEach(l => l(connection.status, connection.roomState));
+                connection.listeners.forEach(l => l(connection.status, connection.roomState, data));
               } else if (data.type === "sync_step_2") {
                 const buffer = Uint8Array.from(atob(data.updateBase64), c => c.charCodeAt(0));
                 Y.applyUpdate(doc, buffer, "remote");
+              } else {
+                // Pass arbitrary signals to listeners
+                connection.listeners.forEach(l => l(connection.status, connection.roomState, data));
               }
             } catch (e) { console.error("Failed to parse websocket message", e); }
           }
@@ -111,9 +119,12 @@ export function useCollaboration(roomId, token) {
     setStatus(connection.status);
     setRoomState(connection.roomState);
 
-    const statusListener = (newStatus, newState) => {
+    const statusListener = (newStatus, newState, data) => {
       setStatus(newStatus);
       if (newState) setRoomState(newState);
+      if (data && onMessageRef.current) {
+          onMessageRef.current(data);
+      }
     };
     connection.listeners.add(statusListener);
 
