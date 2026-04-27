@@ -176,12 +176,25 @@ export const MediaProvider = ({ children }) => {
     // Request abstraction over WebSocket
     const requestWs = async (reqType, payload, resType) => {
         return new Promise((resolve, reject) => {
-            let timeout = setTimeout(() => reject(new Error("Timeout waiting for " + resType)), 5000);
             const qList = pendingRequestsRef.current.get(resType) || [];
-            qList.push((data) => {
+
+            // Keep a reference so we can remove it on timeout
+            const resolver = (data) => {
                 clearTimeout(timeout);
                 resolve(data);
-            });
+            };
+
+            let timeout = setTimeout(() => {
+                // Remove stale resolver so future responses go to the right handler
+                const currentList = pendingRequestsRef.current.get(resType);
+                if (currentList) {
+                    const idx = currentList.indexOf(resolver);
+                    if (idx !== -1) currentList.splice(idx, 1);
+                }
+                reject(new Error('Timeout waiting for ' + resType));
+            }, 5000);
+
+            qList.push(resolver);
             pendingRequestsRef.current.set(resType, qList);
             sendWsMessage({ type: reqType, ...payload });
         });
@@ -498,7 +511,13 @@ export const MediaProvider = ({ children }) => {
         };
     }, []);
 
-    const ringPlayer = (targetUserId, wantsAudio, wantsVideo) => {
+    const ringPlayer = async (targetUserId, wantsAudio, wantsVideo) => {
+        // Start OUR OWN media FIRST before sending the call request.
+        // Without this, the caller has no transport/producer set up when the callee accepts,
+        // so neither side can consume the other's stream.
+        if (wantsAudio && !isAudioActive) await startAudio();
+        if (wantsVideo && !isVideoActive) await startVideo();
+
         sendWsMessage({
             type: 'webrtc:requestCall',
             targetUserId,
