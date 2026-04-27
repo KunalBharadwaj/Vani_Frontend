@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { useCollaboration } from '@/hooks/useCollaboration';
 import * as mediasoupClient from 'mediasoup-client';
 import { toast } from 'sonner';
@@ -73,7 +73,7 @@ export const MediaProvider = ({ children }) => {
                 return [...prev, { id: producerId, kind: producerKind, userId: callerId }];
             });
 
-            if (recvTransportRef.current && (isAudioActive || isVideoActive)) {
+            if (recvTransportRef.current) {
                 sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
             }
         }
@@ -83,10 +83,9 @@ export const MediaProvider = ({ children }) => {
             setRemoteProducersMetadata(producers);
             
             producers.forEach(p => {
-                const canConsumeAudio = isAudioActive || !!audioProducerRef.current;
-                const canConsumeVideo = isVideoActive || !!videoProducerRef.current;
-                if ((p.kind === 'audio' && canConsumeAudio && !audioConsumersRef.current.has(p.id)) ||
-                    (p.kind === 'video' && canConsumeVideo && !videoConsumersRef.current.has(p.id))) {
+                // consumeExistingProducer has its own internal guard for device/transport
+                if ((p.kind === 'audio' && !audioConsumersRef.current.has(p.id)) ||
+                    (p.kind === 'video' && !videoConsumersRef.current.has(p.id))) {
                     consumeExistingProducer(p.id, p.kind);
                 }
             });
@@ -136,7 +135,8 @@ export const MediaProvider = ({ children }) => {
 
         if (data.type === 'webrtc:callAccepted') {
             toast.success(`${data.senderName || 'Participant'} accepted the call`);
-            if (recvTransportRef.current && (isAudioActive || isVideoActive)) {
+            // Fetch remote producers — use ref check only, state may be stale in closure
+            if (recvTransportRef.current) {
                 sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
             }
         }
@@ -176,12 +176,25 @@ export const MediaProvider = ({ children }) => {
     // Request abstraction over WebSocket
     const requestWs = async (reqType, payload, resType) => {
         return new Promise((resolve, reject) => {
-            let timeout = setTimeout(() => reject(new Error("Timeout waiting for " + resType)), 5000);
             const qList = pendingRequestsRef.current.get(resType) || [];
-            qList.push((data) => {
+
+            // Keep a reference so we can remove it on timeout
+            const resolver = (data) => {
                 clearTimeout(timeout);
                 resolve(data);
-            });
+            };
+
+            let timeout = setTimeout(() => {
+                // Remove stale resolver so future responses go to the right handler
+                const currentList = pendingRequestsRef.current.get(resType);
+                if (currentList) {
+                    const idx = currentList.indexOf(resolver);
+                    if (idx !== -1) currentList.splice(idx, 1);
+                }
+                reject(new Error('Timeout waiting for ' + resType));
+            }, 5000);
+
+            qList.push(resolver);
             pendingRequestsRef.current.set(resType, qList);
             sendWsMessage({ type: reqType, ...payload });
         });
@@ -276,12 +289,7 @@ export const MediaProvider = ({ children }) => {
                     if (kind === 'audio') {
                         audioConsumersRef.current.set(producerId, { consumer, stream });
                         setRemoteAudioStreams(Array.from(audioConsumersRef.current.values()).map(v => v.stream));
-
-                        // Automatically attach stream to a new dynamically created Audio element
-                        const audioEl = new Audio();
-                        audioEl.srcObject = stream;
-                        audioEl.play().catch(console.error);
-
+                        // The audio elements are now reliably rendered in the DOM inside MediaContext.Provider
                     } else if (kind === 'video') {
                         videoConsumersRef.current.set(producerId, { consumer, stream });
                         setRemoteVideoStreams(Array.from(videoConsumersRef.current.values()).map(v => v.stream));
@@ -414,9 +422,6 @@ export const MediaProvider = ({ children }) => {
                 const dev = await connectMediasoup();
                 if (dev) {
                     await ensureTransports(dev);
-                    
-                    // Request remote streams immediately so we can see them even if our hardware fails
-                    sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
 
                     let stream;
                     try {
@@ -453,6 +458,10 @@ export const MediaProvider = ({ children }) => {
                             setIsVideoActive(true);
                         }
                     }
+
+                    // Fetch existing remote producers AFTER our own producers are set up
+                    // so that canConsume checks in handleMessage see valid refs
+                    sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
                 }
             } catch (err) {
                 console.error("Transport setup failed", err);
@@ -461,18 +470,27 @@ export const MediaProvider = ({ children }) => {
         } else {
             if (needsAudio) joinedAudio = await startAudio();
             if (needsVideo) joinedVideo = await startVideo();
+            // Hardware may have failed AFTER transport setup (e.g. camera locked by other tab).
+            // If transport exists but we couldn't produce, still try to consume the remote stream.
+            if (!(joinedAudio || joinedVideo) && recvTransportRef.current) {
+                sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
+            }
         }
 
         const joinedAnything = joinedAudio || joinedVideo;
+        const transportReady = !!recvTransportRef.current;
 
-        if (joinedAnything) {
+        // Send callAccepted if we produced OR at least have a recv transport.
+        // This lets the caller know to call getProducers so it can consume our stream,
+        // even if our hardware failed and we can only receive (not send).
+        if (joinedAnything || transportReady) {
             sendWsMessageRef.current?.({
                 type: 'webrtc:callAccepted',
                 targetUserId: incomingCall.callerId,
-                acceptedAudio: !!incomingCall.wantsAudio,
-                acceptedVideo: !!incomingCall.wantsVideo
+                acceptedAudio: joinedAudio,
+                acceptedVideo: joinedVideo
             });
-            toast.success(`Connected to ${incomingCall.callerName}'s call`);
+            if (joinedAnything) toast.success(`Connected to ${incomingCall.callerName}'s call`);
         }
         setIncomingCall(null);
     };
@@ -497,12 +515,23 @@ export const MediaProvider = ({ children }) => {
         };
     }, []);
 
-    const ringPlayer = (targetUserId, wantsAudio, wantsVideo) => {
+    const ringPlayer = async (targetUserId, wantsAudio, wantsVideo) => {
+        if (status !== 'connected') {
+            toast.error('Not connected to room. Please wait or refresh the page.');
+            return;
+        }
+
+        let finalAudio = isAudioActive;
+        let finalVideo = isVideoActive;
+
+        if (wantsAudio && !isAudioActive) finalAudio = await startAudio();
+        if (wantsVideo && !isVideoActive) finalVideo = await startVideo();
+
         sendWsMessage({
             type: 'webrtc:requestCall',
             targetUserId,
-            wantsAudio,
-            wantsVideo
+            wantsAudio: finalAudio,
+            wantsVideo: finalVideo
         });
         toast.info("Call request sent");
     };
@@ -512,9 +541,20 @@ export const MediaProvider = ({ children }) => {
             isAudioActive, toggleAudio,
             isVideoActive, toggleVideo,
             localVideoStream, remoteVideoStreams,
+            localAudioStream: localAudioStreamRef.current, remoteAudioStreams,
             remoteProducersMetadata, ringPlayer
         }}>
             {children}
+            
+            {/* Guarantee playback of remote audio streams by keeping them natively in the DOM */}
+            {remoteAudioStreams.map((stream, idx) => (
+                <audio 
+                    key={stream.id || idx}
+                    ref={(ref) => { if(ref && ref.srcObject !== stream) ref.srcObject = stream; }}
+                    autoPlay 
+                    className="hidden pointer-events-none"
+                />
+            ))}
             {incomingCall && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] bg-zinc-900 text-white border border-white/20 rounded-xl shadow-2xl px-4 py-3 flex items-center gap-4">
                     <div className="text-sm">
