@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 
 export const Login = () => {
   const handleLogin = () => {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vani-backend-mjsl.onrender.com";
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vanibackend-production.up.railway.app";
     const redirectTo = window.location.pathname + window.location.search;
     const nonce = (window.crypto && crypto.randomUUID)
       ? crypto.randomUUID()

@@ -22,7 +22,7 @@ export function useCollaboration(roomId, token, onMessage = null) {
     
     if (!connection) {
       const doc = new Y.Doc();
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://vani-backend-mjsl.onrender.com';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://vanibackend-production.up.railway.app';
       const wsUrl = backendUrl.replace('http', 'ws');
       
       connection = {
