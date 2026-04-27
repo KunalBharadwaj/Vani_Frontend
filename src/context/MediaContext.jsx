@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { useCollaboration } from '@/hooks/useCollaboration';
 import * as mediasoupClient from 'mediasoup-client';
 import { toast } from 'sonner';
@@ -73,7 +73,7 @@ export const MediaProvider = ({ children }) => {
                 return [...prev, { id: producerId, kind: producerKind, userId: callerId }];
             });
 
-            if (recvTransportRef.current && (isAudioActive || isVideoActive)) {
+            if (recvTransportRef.current) {
                 sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
             }
         }
@@ -83,10 +83,9 @@ export const MediaProvider = ({ children }) => {
             setRemoteProducersMetadata(producers);
             
             producers.forEach(p => {
-                const canConsumeAudio = isAudioActive || !!audioProducerRef.current;
-                const canConsumeVideo = isVideoActive || !!videoProducerRef.current;
-                if ((p.kind === 'audio' && canConsumeAudio && !audioConsumersRef.current.has(p.id)) ||
-                    (p.kind === 'video' && canConsumeVideo && !videoConsumersRef.current.has(p.id))) {
+                // consumeExistingProducer has its own internal guard for device/transport
+                if ((p.kind === 'audio' && !audioConsumersRef.current.has(p.id)) ||
+                    (p.kind === 'video' && !videoConsumersRef.current.has(p.id))) {
                     consumeExistingProducer(p.id, p.kind);
                 }
             });
@@ -136,7 +135,8 @@ export const MediaProvider = ({ children }) => {
 
         if (data.type === 'webrtc:callAccepted') {
             toast.success(`${data.senderName || 'Participant'} accepted the call`);
-            if (recvTransportRef.current && (isAudioActive || isVideoActive)) {
+            // Fetch remote producers — use ref check only, state may be stale in closure
+            if (recvTransportRef.current) {
                 sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
             }
         }
@@ -414,9 +414,6 @@ export const MediaProvider = ({ children }) => {
                 const dev = await connectMediasoup();
                 if (dev) {
                     await ensureTransports(dev);
-                    
-                    // Request remote streams immediately so we can see them even if our hardware fails
-                    sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
 
                     let stream;
                     try {
@@ -453,6 +450,10 @@ export const MediaProvider = ({ children }) => {
                             setIsVideoActive(true);
                         }
                     }
+
+                    // Fetch existing remote producers AFTER our own producers are set up
+                    // so that canConsume checks in handleMessage see valid refs
+                    sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
                 }
             } catch (err) {
                 console.error("Transport setup failed", err);
