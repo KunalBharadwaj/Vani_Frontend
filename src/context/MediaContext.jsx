@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { useCollaboration } from '@/hooks/useCollaboration';
 import * as mediasoupClient from 'mediasoup-client';
 import { toast } from 'sonner';
@@ -73,7 +73,11 @@ export const MediaProvider = ({ children }) => {
                 return [...prev, { id: producerId, kind: producerKind, userId: callerId }];
             });
 
-            if (recvTransportRef.current && (isAudioActive || isVideoActive)) {
+            // Bug 3 Fix: Use refs instead of state variables (avoids stale closure).
+            // audioProducerRef/videoProducerRef are always current, unlike isAudioActive/isVideoActive
+            // captured at useCallback creation time.
+            const isInStream = !!audioProducerRef.current || !!videoProducerRef.current;
+            if (recvTransportRef.current && isInStream) {
                 sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
             }
         }
@@ -83,8 +87,9 @@ export const MediaProvider = ({ children }) => {
             setRemoteProducersMetadata(producers);
             
             producers.forEach(p => {
-                const canConsumeAudio = isAudioActive || !!audioProducerRef.current;
-                const canConsumeVideo = isVideoActive || !!videoProducerRef.current;
+                // Bug 3 Fix: Use refs to check participation status — never stale.
+                const canConsumeAudio = !!audioProducerRef.current;
+                const canConsumeVideo = !!videoProducerRef.current;
                 if ((p.kind === 'audio' && canConsumeAudio && !audioConsumersRef.current.has(p.id)) ||
                     (p.kind === 'video' && canConsumeVideo && !videoConsumersRef.current.has(p.id))) {
                     consumeExistingProducer(p.id, p.kind);
@@ -136,7 +141,9 @@ export const MediaProvider = ({ children }) => {
 
         if (data.type === 'webrtc:callAccepted') {
             toast.success(`${data.senderName || 'Participant'} accepted the call`);
-            if (recvTransportRef.current && (isAudioActive || isVideoActive)) {
+            // Bug 3 Fix: ref-based check
+            const isInStream = !!audioProducerRef.current || !!videoProducerRef.current;
+            if (recvTransportRef.current && isInStream) {
                 sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
             }
         }
@@ -165,7 +172,9 @@ export const MediaProvider = ({ children }) => {
             }
         }
 
-    }, [isAudioActive, isVideoActive, currentUserId]);
+    // Note: isAudioActive/isVideoActive intentionally removed from deps — we use refs for freshness.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUserId]);
 
     const { sendWsMessage, status } = useCollaboration(roomId, token, handleMessage);
 
@@ -206,7 +215,13 @@ export const MediaProvider = ({ children }) => {
     const ensureTransports = async (activeDevice) => {
         if (sendTransportRef.current && recvTransportRef.current) return;
         try {
-            // Create Send Transport
+            // Bug 2 Fix: Create transports SEQUENTIALLY.
+            // The requestWs promise queue matches responses by type ('webrtc:transportCreated').
+            // If both requests fire simultaneously, the two responses arrive in undefined order
+            // and may be resolved by the wrong promise, corrupting the transport setup.
+            // Awaiting the first fully before starting the second guarantees correct pairing.
+
+            // Step 1: Create Send Transport
             const sendRes = await requestWs('webrtc:createTransport', {}, 'webrtc:transportCreated');
             sendTransportRef.current = activeDevice.createSendTransport(sendRes);
 
@@ -229,7 +244,7 @@ export const MediaProvider = ({ children }) => {
                 } catch (e) { errback(e); }
             });
 
-            // Create Receive Transport
+            // Step 2: Only now create Receive Transport (after send transport is fully set up)
             const recvRes = await requestWs('webrtc:createTransport', {}, 'webrtc:transportCreated');
             recvTransportRef.current = activeDevice.createRecvTransport(recvRes);
 
