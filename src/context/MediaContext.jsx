@@ -475,18 +475,27 @@ export const MediaProvider = ({ children }) => {
         } else {
             if (needsAudio) joinedAudio = await startAudio();
             if (needsVideo) joinedVideo = await startVideo();
+            // Hardware may have failed AFTER transport setup (e.g. camera locked by other tab).
+            // If transport exists but we couldn't produce, still try to consume the remote stream.
+            if (!(joinedAudio || joinedVideo) && recvTransportRef.current) {
+                sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
+            }
         }
 
         const joinedAnything = joinedAudio || joinedVideo;
+        const transportReady = !!recvTransportRef.current;
 
-        if (joinedAnything) {
+        // Send callAccepted if we produced OR at least have a recv transport.
+        // This lets the caller know to call getProducers so it can consume our stream,
+        // even if our hardware failed and we can only receive (not send).
+        if (joinedAnything || transportReady) {
             sendWsMessageRef.current?.({
                 type: 'webrtc:callAccepted',
                 targetUserId: incomingCall.callerId,
-                acceptedAudio: !!incomingCall.wantsAudio,
-                acceptedVideo: !!incomingCall.wantsVideo
+                acceptedAudio: joinedAudio,
+                acceptedVideo: joinedVideo
             });
-            toast.success(`Connected to ${incomingCall.callerName}'s call`);
+            if (joinedAnything) toast.success(`Connected to ${incomingCall.callerName}'s call`);
         }
         setIncomingCall(null);
     };
@@ -512,6 +521,11 @@ export const MediaProvider = ({ children }) => {
     }, []);
 
     const ringPlayer = async (targetUserId, wantsAudio, wantsVideo) => {
+        if (status !== 'connected') {
+            toast.error('Not connected to room. Please wait or refresh the page.');
+            return;
+        }
+
         // Start OUR OWN media FIRST before sending the call request.
         // Without this, the caller has no transport/producer set up when the callee accepts,
         // so neither side can consume the other's stream.
