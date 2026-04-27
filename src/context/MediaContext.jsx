@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { useCollaboration } from '@/hooks/useCollaboration';
 import * as mediasoupClient from 'mediasoup-client';
 import { toast } from 'sonner';
@@ -550,5 +550,4 @@ export const MediaProvider = ({ children }) => {
 };
 
 export const useMedia = () => useContext(MediaContext);
-/ /   f o r c e d   s y n c   u p d a t e  
- 
+// forced sync update
