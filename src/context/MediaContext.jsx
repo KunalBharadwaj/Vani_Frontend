@@ -289,12 +289,7 @@ export const MediaProvider = ({ children }) => {
                     if (kind === 'audio') {
                         audioConsumersRef.current.set(producerId, { consumer, stream });
                         setRemoteAudioStreams(Array.from(audioConsumersRef.current.values()).map(v => v.stream));
-
-                        // Automatically attach stream to a new dynamically created Audio element
-                        const audioEl = new Audio();
-                        audioEl.srcObject = stream;
-                        audioEl.play().catch(console.error);
-
+                        // The audio elements are now reliably rendered in the DOM inside MediaContext.Provider
                     } else if (kind === 'video') {
                         videoConsumersRef.current.set(producerId, { consumer, stream });
                         setRemoteVideoStreams(Array.from(videoConsumersRef.current.values()).map(v => v.stream));
@@ -526,17 +521,17 @@ export const MediaProvider = ({ children }) => {
             return;
         }
 
-        // Start OUR OWN media FIRST before sending the call request.
-        // Without this, the caller has no transport/producer set up when the callee accepts,
-        // so neither side can consume the other's stream.
-        if (wantsAudio && !isAudioActive) await startAudio();
-        if (wantsVideo && !isVideoActive) await startVideo();
+        let finalAudio = isAudioActive;
+        let finalVideo = isVideoActive;
+
+        if (wantsAudio && !isAudioActive) finalAudio = await startAudio();
+        if (wantsVideo && !isVideoActive) finalVideo = await startVideo();
 
         sendWsMessage({
             type: 'webrtc:requestCall',
             targetUserId,
-            wantsAudio,
-            wantsVideo
+            wantsAudio: finalAudio,
+            wantsVideo: finalVideo
         });
         toast.info("Call request sent");
     };
@@ -546,9 +541,20 @@ export const MediaProvider = ({ children }) => {
             isAudioActive, toggleAudio,
             isVideoActive, toggleVideo,
             localVideoStream, remoteVideoStreams,
+            localAudioStream: localAudioStreamRef.current, remoteAudioStreams,
             remoteProducersMetadata, ringPlayer
         }}>
             {children}
+            
+            {/* Guarantee playback of remote audio streams by keeping them natively in the DOM */}
+            {remoteAudioStreams.map((stream, idx) => (
+                <audio 
+                    key={stream.id || idx}
+                    ref={(ref) => { if(ref && ref.srcObject !== stream) ref.srcObject = stream; }}
+                    autoPlay 
+                    className="hidden pointer-events-none"
+                />
+            ))}
             {incomingCall && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] bg-zinc-900 text-white border border-white/20 rounded-xl shadow-2xl px-4 py-3 flex items-center gap-4">
                     <div className="text-sm">
