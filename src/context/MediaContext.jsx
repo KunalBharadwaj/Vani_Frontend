@@ -1,178 +1,147 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { useCollaboration } from '@/hooks/useCollaboration';
-import * as mediasoupClient from 'mediasoup-client';
+import AgoraRTC from 'agora-rtc-sdk-ng';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '@/App';
 
 const MediaContext = createContext(null);
 
+// Agora client — one per app lifecycle, not per component mount
+const agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://vanibackend-production.up.railway.app';
+
 export const MediaProvider = ({ children }) => {
     const [searchParams] = useSearchParams();
     const roomId = searchParams.get('room');
     const token = useContext(AuthContext);
 
-    const [device, setDevice] = useState(null);
-    const deviceRef = useRef(null);
-
     // Audio state
     const [isAudioActive, setIsAudioActive] = useState(false);
-    const audioProducerRef = useRef(null);
-    const audioConsumersRef = useRef(new Map()); // id -> { consumer, stream }
-    const [remoteAudioStreams, setRemoteAudioStreams] = useState([]); // Array of MediaStream
+    const localAudioTrackRef = useRef(null);
 
     // Video state
     const [isVideoActive, setIsVideoActive] = useState(false);
-    const videoProducerRef = useRef(null);
-    const videoConsumersRef = useRef(new Map()); // id -> { consumer, stream }
-    const [remoteVideoStreams, setRemoteVideoStreams] = useState([]); // Array of MediaStream
-    const localVideoStreamRef = useRef(null);
-    const localAudioStreamRef = useRef(null);
-    const [localVideoStream, setLocalVideoStream] = useState(null);
-    const [remoteProducersMetadata, setRemoteProducersMetadata] = useState([]); // [{id, kind, userId}]
-    const [incomingCall, setIncomingCall] = useState(null); // { callerId, callerName, wantsAudio, wantsVideo }
-    const dismissedCallersRef = useRef(new Map()); // callerId -> dismissTimestamp
+    const localVideoTrackRef = useRef(null);
+    const [localVideoTrack, setLocalVideoTrack] = useState(null);
 
-    const [transportsConnected, setTransportsConnected] = useState(false);
+    // Remote users: map of uid -> { audioTrack?, videoTrack? }
+    const [remoteUsers, setRemoteUsers] = useState(new Map());
+
+    // Derived: list of remote video tracks for VideoChat component
+    const remoteVideoTracks = Array.from(remoteUsers.values())
+        .map(u => u.videoTrack)
+        .filter(Boolean);
+
+    // For RoomDashboard: who is currently in audio/video
+    const [remoteProducersMetadata, setRemoteProducersMetadata] = useState([]);
+
+    // Incoming call state (ring notification via WebSocket — unchanged)
+    const [incomingCall, setIncomingCall] = useState(null);
+    const dismissedCallersRef = useRef(new Map());
+
     const currentUserId = token
-        ? (() => {
-            try {
-                return JSON.parse(atob(token.split('.')[1]))?.id || null;
-            } catch {
-                return null;
-            }
-        })()
+        ? (() => { try { return JSON.parse(atob(token.split('.')[1]))?.id || null; } catch { return null; } })()
         : null;
 
-    const sendTransportRef = useRef(null);
-    const recvTransportRef = useRef(null);
-
-    // We need to keep a reference to sendWsMessage since we might need it inside callbacks
     const sendWsMessageRef = useRef(null);
-    // Store promises to await responses from websocket
-    const pendingRequestsRef = useRef(new Map());
-    const consumeMutexRef = useRef(Promise.resolve());
+    const joinedRef = useRef(false); // Prevent double-join
 
-    const handleMessage = useCallback((data) => {
-        // Resolve pending requests if they match the type
-        if (data.type) {
-            const qList = pendingRequestsRef.current.get(data.type);
-            if (qList && qList.length > 0) {
-                const resolve = qList.shift();
-                resolve(data);
+    // ─── Agora event handlers ───────────────────────────────────────────────
+
+    useEffect(() => {
+        const handleUserPublished = async (user, mediaType) => {
+            await agoraClient.subscribe(user, mediaType);
+
+            setRemoteUsers(prev => {
+                const next = new Map(prev);
+                const existing = next.get(user.uid) || {};
+                next.set(user.uid, { ...existing, [mediaType === 'audio' ? 'audioTrack' : 'videoTrack']: user[mediaType === 'audio' ? 'audioTrack' : 'videoTrack'] });
+                return next;
+            });
+
+            if (mediaType === 'audio' && user.audioTrack) {
+                user.audioTrack.play();
             }
-        }
-
-        if (data.type === 'webrtc:newProducer') {
-            const producerKind = data.kind;
-            const producerId = data.producerId;
-            const callerId = data.callerId || null;
 
             setRemoteProducersMetadata(prev => {
-                if (prev.find(p => p.id === producerId)) return prev;
-                return [...prev, { id: producerId, kind: producerKind, userId: callerId }];
+                const uid = String(user.uid);
+                const filtered = prev.filter(p => !(p.userId === uid && p.kind === mediaType));
+                return [...filtered, { id: `${uid}-${mediaType}`, kind: mediaType, userId: uid }];
             });
+        };
 
-            // Bug 3 Fix: Use refs instead of state variables (avoids stale closure).
-            // audioProducerRef/videoProducerRef are always current, unlike isAudioActive/isVideoActive
-            // captured at useCallback creation time.
-            const isInStream = !!audioProducerRef.current || !!videoProducerRef.current;
-            if (recvTransportRef.current && isInStream) {
-                sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
-            }
-        }
-
-        if (data.type === 'webrtc:activeProducers') {
-            const { producers } = data;
-            setRemoteProducersMetadata(producers);
-            
-            producers.forEach(p => {
-                // Bug 3 Fix: Use refs to check participation status — never stale.
-                const canConsumeAudio = !!audioProducerRef.current;
-                const canConsumeVideo = !!videoProducerRef.current;
-                if ((p.kind === 'audio' && canConsumeAudio && !audioConsumersRef.current.has(p.id)) ||
-                    (p.kind === 'video' && canConsumeVideo && !videoConsumersRef.current.has(p.id))) {
-                    consumeExistingProducer(p.id, p.kind);
+        const handleUserUnpublished = (user, mediaType) => {
+            setRemoteUsers(prev => {
+                const next = new Map(prev);
+                const existing = next.get(user.uid);
+                if (existing) {
+                    const updated = { ...existing };
+                    delete updated[mediaType === 'audio' ? 'audioTrack' : 'videoTrack'];
+                    if (Object.keys(updated).length === 0) {
+                        next.delete(user.uid);
+                    } else {
+                        next.set(user.uid, updated);
+                    }
                 }
+                return next;
             });
-        }
 
-        if (data.type === 'webrtc:producerRemoved') {
-            const producerId = data.producerId;
-            setRemoteProducersMetadata(prev => prev.filter(p => p.id !== producerId));
-            
-            if (audioConsumersRef.current.has(producerId)) {
-                audioConsumersRef.current.get(producerId).consumer.close();
-                audioConsumersRef.current.delete(producerId);
-                setRemoteAudioStreams(Array.from(audioConsumersRef.current.values()).map(v => v.stream));
-            }
-            if (videoConsumersRef.current.has(producerId)) {
-                videoConsumersRef.current.get(producerId).consumer.close();
-                videoConsumersRef.current.delete(producerId);
-                setRemoteVideoStreams(Array.from(videoConsumersRef.current.values()).map(v => v.stream));
-            }
-        }
+            setRemoteProducersMetadata(prev =>
+                prev.filter(p => !(p.userId === String(user.uid) && p.kind === mediaType))
+            );
+        };
 
+        const handleUserLeft = (user) => {
+            setRemoteUsers(prev => {
+                const next = new Map(prev);
+                next.delete(user.uid);
+                return next;
+            });
+            setRemoteProducersMetadata(prev => prev.filter(p => p.userId !== String(user.uid)));
+        };
+
+        agoraClient.on('user-published', handleUserPublished);
+        agoraClient.on('user-unpublished', handleUserUnpublished);
+        agoraClient.on('user-left', handleUserLeft);
+
+        return () => {
+            agoraClient.off('user-published', handleUserPublished);
+            agoraClient.off('user-unpublished', handleUserUnpublished);
+            agoraClient.off('user-left', handleUserLeft);
+        };
+    }, []);
+
+    // ─── WebSocket (unchanged — for ring notifications only) ─────────────────
+
+    const handleMessage = useCallback((data) => {
         if (data.type === 'webrtc:incomingCallRequest') {
-             const callerId = data.callerId || null;
-             const dismissedAt = callerId ? dismissedCallersRef.current.get(callerId) : null;
-             const isDismissedRecently = dismissedAt ? (Date.now() - dismissedAt) < 30000 : false;
-             
-             if (
-                 callerId &&
-                 callerId !== currentUserId &&
-                 !isDismissedRecently
-             ) {
-                 setIncomingCall((prev) => {
-                     const next = prev ? { ...prev } : {
-                         callerId,
-                         callerName: data.callerName || 'Someone',
-                         wantsAudio: false,
-                         wantsVideo: false,
-                     };
-                     next.callerId = callerId;
-                     next.callerName = data.callerName || next.callerName || 'Someone';
-                     if (data.wantsAudio) next.wantsAudio = true;
-                     if (data.wantsVideo) next.wantsVideo = true;
-                     return next;
-                 });
-             }
+            const callerId = data.callerId || null;
+            const dismissedAt = callerId ? dismissedCallersRef.current.get(callerId) : null;
+            const isDismissedRecently = dismissedAt ? (Date.now() - dismissedAt) < 30000 : false;
+
+            if (callerId && callerId !== currentUserId && !isDismissedRecently) {
+                setIncomingCall(prev => {
+                    const next = prev ? { ...prev } : { callerId, callerName: data.callerName || 'Someone', wantsAudio: false, wantsVideo: false };
+                    next.callerId = callerId;
+                    next.callerName = data.callerName || next.callerName;
+                    if (data.wantsAudio) next.wantsAudio = true;
+                    if (data.wantsVideo) next.wantsVideo = true;
+                    return next;
+                });
+            }
         }
 
         if (data.type === 'webrtc:callAccepted') {
             toast.success(`${data.senderName || 'Participant'} accepted the call`);
-            // Bug 3 Fix: ref-based check
-            const isInStream = !!audioProducerRef.current || !!videoProducerRef.current;
-            if (recvTransportRef.current && isInStream) {
-                sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
-            }
         }
 
         if (data.type === 'webrtc:callDeclined') {
             toast.error(`${data.senderName || 'Participant'} declined the call`);
-
-            // In 1:1 flow, stop outgoing media when call is declined.
-            if (isAudioActive) {
-                audioProducerRef.current?.close();
-                audioProducerRef.current = null;
-                audioConsumersRef.current.forEach(({ consumer }) => consumer.close());
-                audioConsumersRef.current.clear();
-                setRemoteAudioStreams([]);
-                setIsAudioActive(false);
-            }
-
-            if (isVideoActive) {
-                videoProducerRef.current?.close();
-                videoProducerRef.current = null;
-                setLocalVideoStream(null);
-                videoConsumersRef.current.forEach(({ consumer }) => consumer.close());
-                videoConsumersRef.current.clear();
-                setRemoteVideoStreams([]);
-                setIsVideoActive(false);
-            }
+            stopAudio();
+            stopVideo();
         }
-
-    // Note: isAudioActive/isVideoActive intentionally removed from deps — we use refs for freshness.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUserId]);
 
@@ -182,352 +151,151 @@ export const MediaProvider = ({ children }) => {
         sendWsMessageRef.current = sendWsMessage;
     }, [sendWsMessage]);
 
-    // Request abstraction over WebSocket
-    const requestWs = async (reqType, payload, resType) => {
-        return new Promise((resolve, reject) => {
-            let timeout = setTimeout(() => reject(new Error("Timeout waiting for " + resType)), 5000);
-            const qList = pendingRequestsRef.current.get(resType) || [];
-            qList.push((data) => {
-                clearTimeout(timeout);
-                resolve(data);
-            });
-            pendingRequestsRef.current.set(resType, qList);
-            sendWsMessage({ type: reqType, ...payload });
-        });
+    // ─── Agora join/leave helpers ─────────────────────────────────────────────
+
+    const fetchAgoraToken = async () => {
+        const res = await fetch(
+            `${BACKEND_URL}/api/agora/token?channel=${encodeURIComponent(roomId)}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) throw new Error('Failed to fetch Agora token');
+        return res.json(); // { token, uid, appId }
     };
 
-    const connectMediasoup = async () => {
-        if (deviceRef.current) return deviceRef.current;
-        try {
-            const res = await requestWs('webrtc:getRouterRtpCapabilities', {}, 'webrtc:routerRtpCapabilities');
-            const newDevice = new mediasoupClient.Device();
-            await newDevice.load({ routerRtpCapabilities: res.rtpCapabilities });
-            deviceRef.current = newDevice;
-            setDevice(newDevice);
-            return newDevice;
-        } catch (err) {
-            console.error('Failed to load mediasoup device', err);
-            toast.error('Could not initialize media connection');
-            return null;
+    const ensureJoined = async () => {
+        if (joinedRef.current) return;
+        const { token: agoraToken, uid, appId } = await fetchAgoraToken();
+        await agoraClient.join(appId, roomId, agoraToken, uid);
+        joinedRef.current = true;
+    };
+
+    const leaveIfIdle = async () => {
+        if (!localAudioTrackRef.current && !localVideoTrackRef.current) {
+            await agoraClient.leave();
+            joinedRef.current = false;
         }
     };
 
-    const ensureTransports = async (activeDevice) => {
-        if (sendTransportRef.current && recvTransportRef.current) return;
-        try {
-            // Bug 2 Fix: Create transports SEQUENTIALLY.
-            // The requestWs promise queue matches responses by type ('webrtc:transportCreated').
-            // If both requests fire simultaneously, the two responses arrive in undefined order
-            // and may be resolved by the wrong promise, corrupting the transport setup.
-            // Awaiting the first fully before starting the second guarantees correct pairing.
-
-            // Step 1: Create Send Transport
-            const sendRes = await requestWs('webrtc:createTransport', {}, 'webrtc:transportCreated');
-            sendTransportRef.current = activeDevice.createSendTransport(sendRes);
-
-            sendTransportRef.current.on('connect', async ({ dtlsParameters }, callback, errback) => {
-                try {
-                    await requestWs('webrtc:connectTransport', { transportId: sendTransportRef.current.id, dtlsParameters }, 'webrtc:transportConnected');
-                    callback();
-                } catch (e) { errback(e); }
-            });
-
-            sendTransportRef.current.on('produce', async (parameters, callback, errback) => {
-                try {
-                    const pRes = await requestWs('webrtc:produce', {
-                        transportId: sendTransportRef.current.id,
-                        kind: parameters.kind,
-                        rtpParameters: parameters.rtpParameters,
-                        appData: parameters.appData
-                    }, 'webrtc:produced');
-                    callback({ id: pRes.id });
-                } catch (e) { errback(e); }
-            });
-
-            // Step 2: Only now create Receive Transport (after send transport is fully set up)
-            const recvRes = await requestWs('webrtc:createTransport', {}, 'webrtc:transportCreated');
-            recvTransportRef.current = activeDevice.createRecvTransport(recvRes);
-
-            recvTransportRef.current.on('connect', async ({ dtlsParameters }, callback, errback) => {
-                try {
-                    await requestWs('webrtc:connectTransport', { transportId: recvTransportRef.current.id, dtlsParameters }, 'webrtc:transportConnected');
-                    callback();
-                } catch (e) { errback(e); }
-            });
-
-            setTransportsConnected(true);
-        } catch (err) {
-            console.error('Failed to init transports', err);
-            toast.error('Media transport error');
-            throw err;
-        }
-    };
-
-    const consumeExistingProducer = async (producerId, kind) => {
-        return new Promise((resolve) => {
-            consumeMutexRef.current = consumeMutexRef.current.then(async () => {
-                try {
-                    const activeDevice = deviceRef.current || device;
-                    if (!activeDevice || !recvTransportRef.current) {
-                        resolve();
-                        return;
-                    }
-
-                    const res = await requestWs('webrtc:consume', {
-                        transportId: recvTransportRef.current.id,
-                        producerId,
-                        rtpCapabilities: activeDevice.rtpCapabilities
-                    }, 'webrtc:consumed');
-
-                    const consumer = await recvTransportRef.current.consume({
-                        id: res.id,
-                        producerId: res.producerId,
-                        kind: res.kind,
-                        rtpParameters: res.rtpParameters
-                    });
-
-                    const stream = new MediaStream([consumer.track]);
-
-                    if (kind === 'audio') {
-                        audioConsumersRef.current.set(producerId, { consumer, stream });
-                        setRemoteAudioStreams(Array.from(audioConsumersRef.current.values()).map(v => v.stream));
-
-                        // Automatically attach stream to a new dynamically created Audio element
-                        const audioEl = new Audio();
-                        audioEl.srcObject = stream;
-                        audioEl.play().catch(console.error);
-
-                    } else if (kind === 'video') {
-                        videoConsumersRef.current.set(producerId, { consumer, stream });
-                        setRemoteVideoStreams(Array.from(videoConsumersRef.current.values()).map(v => v.stream));
-                    }
-
-                    // Resume consumer on backend
-                    sendWsMessageRef.current?.({ type: 'webrtc:resumeConsumer', consumerId: consumer.id });
-
-                } catch (err) {
-                    console.error("Failed to consume", producerId, err);
-                }
-                resolve();
-            });
-        });
-    };
+    // ─── Audio ────────────────────────────────────────────────────────────────
 
     const startAudio = async () => {
         if (isAudioActive) return true;
         try {
-            const dev = await connectMediasoup();
-            if (!dev) return false;
-            await ensureTransports(dev);
-
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            localAudioStreamRef.current = stream;
-            const audioTrack = stream.getAudioTracks()[0];
-
-            audioProducerRef.current = await sendTransportRef.current.produce({ track: audioTrack });
+            await ensureJoined();
+            const track = await AgoraRTC.createMicrophoneAudioTrack();
+            await agoraClient.publish([track]);
+            localAudioTrackRef.current = track;
             setIsAudioActive(true);
-
-            // Fetch existing producers to consume
-            sendWsMessage({ type: 'webrtc:getProducers' });
-
-            toast.success("Joined Audio Chat");
+            toast.success('Joined Audio Chat');
             return true;
-
         } catch (err) {
             console.error(err);
-            toast.error("Could not capture audio");
+            toast.error('Could not capture audio');
             return false;
         }
     };
 
-    const stopAudio = () => {
-        localAudioStreamRef.current?.getTracks().forEach(track => track.stop());
-        localAudioStreamRef.current = null;
-        if (audioProducerRef.current) {
-            audioProducerRef.current.close();
-            sendWsMessageRef.current?.({ type: 'webrtc:closeProducer', producerId: audioProducerRef.current.id });
-            audioProducerRef.current = null;
+    const stopAudio = async () => {
+        if (localAudioTrackRef.current) {
+            await agoraClient.unpublish([localAudioTrackRef.current]);
+            localAudioTrackRef.current.close();
+            localAudioTrackRef.current = null;
         }
-        audioConsumersRef.current.forEach(({ consumer }) => consumer.close());
-        audioConsumersRef.current.clear();
-        setRemoteAudioStreams([]);
         setIsAudioActive(false);
-    }; // Sync Fix
+        await leaveIfIdle();
+    };
+
+    const toggleAudio = async () => {
+        if (isAudioActive) { await stopAudio(); } else { await startAudio(); }
+    };
+
+    // ─── Video ────────────────────────────────────────────────────────────────
 
     const startVideo = async () => {
         if (isVideoActive) return true;
         try {
-            const dev = await connectMediasoup();
-            if (!dev) return false;
-            await ensureTransports(dev);
-
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            localVideoStreamRef.current = stream;
-            const videoTrack = stream.getVideoTracks()[0];
-
-            videoProducerRef.current = await sendTransportRef.current.produce({ track: videoTrack });
-            setLocalVideoStream(stream);
+            await ensureJoined();
+            const track = await AgoraRTC.createCameraVideoTrack();
+            await agoraClient.publish([track]);
+            localVideoTrackRef.current = track;
+            setLocalVideoTrack(track);
             setIsVideoActive(true);
-
-            sendWsMessage({ type: 'webrtc:getProducers' });
-
-            toast.success("Joined Video Chat");
+            toast.success('Joined Video Chat');
             return true;
         } catch (err) {
             console.error(err);
-            toast.error("Could not capture video");
+            toast.error('Could not capture video');
             return false;
         }
     };
 
-    const stopVideo = () => {
-        localVideoStreamRef.current?.getTracks().forEach(track => track.stop());
-        localVideoStreamRef.current = null;
-        if (videoProducerRef.current) {
-            videoProducerRef.current.close();
-            sendWsMessageRef.current?.({ type: 'webrtc:closeProducer', producerId: videoProducerRef.current.id });
-            videoProducerRef.current = null;
+    const stopVideo = async () => {
+        if (localVideoTrackRef.current) {
+            await agoraClient.unpublish([localVideoTrackRef.current]);
+            localVideoTrackRef.current.close();
+            localVideoTrackRef.current = null;
         }
-        setLocalVideoStream(null);
-
-        videoConsumersRef.current.forEach(({ consumer }) => consumer.close());
-        videoConsumersRef.current.clear();
-        setRemoteVideoStreams([]);
+        setLocalVideoTrack(null);
         setIsVideoActive(false);
-    };
-
-    const toggleAudio = async () => {
-        if (isAudioActive) {
-            stopAudio();
-            return;
-        }
-        await startAudio();
+        await leaveIfIdle();
     };
 
     const toggleVideo = async () => {
-        if (isVideoActive) {
-            stopVideo();
-            return;
-        }
-        await startVideo();
+        if (isVideoActive) { await stopVideo(); } else { await startVideo(); }
+    };
+
+    // ─── Ring / Call invitation (via WebSocket — unchanged UX) ───────────────
+
+    const ringPlayer = (targetUserId, wantsAudio, wantsVideo) => {
+        sendWsMessage({ type: 'webrtc:requestCall', targetUserId, wantsAudio, wantsVideo });
+        toast.info('Call request sent');
     };
 
     const acceptIncomingCall = async () => {
         if (!incomingCall) return;
-
-        if (incomingCall.callerId) {
-            dismissedCallersRef.current.delete(incomingCall.callerId);
-        }
-
-        let joinedAudio = false;
-        let joinedVideo = false;
-        const needsAudio = incomingCall.wantsAudio && !isAudioActive;
-        const needsVideo = incomingCall.wantsVideo && !isVideoActive;
-
-        if (needsAudio && needsVideo) {
-            try {
-                const dev = await connectMediasoup();
-                if (dev) {
-                    await ensureTransports(dev);
-                    
-                    // Request remote streams immediately so we can see them even if our hardware fails
-                    sendWsMessageRef.current?.({ type: 'webrtc:getProducers' });
-
-                    let stream;
-                    try {
-                        // Request both streams simultaneously
-                        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                        joinedAudio = true;
-                        joinedVideo = true;
-                    } catch (hardwareErr) {
-                        console.warn("Combined media capture failed, falling back to audio only. Usually caused by testing two browsers on the same PC locking the webcam.", hardwareErr);
-                        toast.error("Camera locked. Falling back to audio only.");
-                        try {
-                            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                            joinedAudio = true;
-                        } catch (audioErr) {
-                            console.error("Audio capture also failed", audioErr);
-                            toast.error("Could not capture any media.");
-                            stream = null;
-                        }
-                    }
-
-                    if (stream) {
-                        const audioTrack = stream.getAudioTracks()[0];
-                        if (audioTrack) {
-                            localAudioStreamRef.current = stream;
-                            audioProducerRef.current = await sendTransportRef.current.produce({ track: audioTrack });
-                            setIsAudioActive(true);
-                        }
-                        
-                        const videoTrack = stream.getVideoTracks()[0];
-                        if (videoTrack) {
-                            localVideoStreamRef.current = stream;
-                            videoProducerRef.current = await sendTransportRef.current.produce({ track: videoTrack });
-                            setLocalVideoStream(stream);
-                            setIsVideoActive(true);
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("Transport setup failed", err);
-                toast.error("Could not connect media transport securely");
-            }
-        } else {
-            if (needsAudio) joinedAudio = await startAudio();
-            if (needsVideo) joinedVideo = await startVideo();
-        }
-
-        const joinedAnything = joinedAudio || joinedVideo;
-
-        if (joinedAnything) {
-            sendWsMessageRef.current?.({
-                type: 'webrtc:callAccepted',
-                targetUserId: incomingCall.callerId,
-                acceptedAudio: !!incomingCall.wantsAudio,
-                acceptedVideo: !!incomingCall.wantsVideo
-            });
-            toast.success(`Connected to ${incomingCall.callerName}'s call`);
-        }
+        if (incomingCall.callerId) dismissedCallersRef.current.delete(incomingCall.callerId);
+        if (incomingCall.wantsAudio) await startAudio();
+        if (incomingCall.wantsVideo) await startVideo();
+        sendWsMessageRef.current?.({
+            type: 'webrtc:callAccepted',
+            targetUserId: incomingCall.callerId,
+            acceptedAudio: !!incomingCall.wantsAudio,
+            acceptedVideo: !!incomingCall.wantsVideo,
+        });
+        toast.success(`Connected to ${incomingCall.callerName}'s call`);
         setIncomingCall(null);
     };
 
     const declineIncomingCall = () => {
         if (incomingCall?.callerId) {
             dismissedCallersRef.current.set(incomingCall.callerId, Date.now());
-            sendWsMessage({
-                type: 'webrtc:callDeclined',
-                targetUserId: incomingCall.callerId
-            });
+            sendWsMessage({ type: 'webrtc:callDeclined', targetUserId: incomingCall.callerId });
         }
         setIncomingCall(null);
-        toast("Call declined");
+        toast('Call declined');
     };
 
-    // Ensure cleanup if component unmounts
+    // ─── Cleanup on unmount ───────────────────────────────────────────────────
+
     useEffect(() => {
         return () => {
-            if (audioProducerRef.current && !audioProducerRef.current.closed) audioProducerRef.current.close();
-            if (videoProducerRef.current && !videoProducerRef.current.closed) videoProducerRef.current.close();
+            localAudioTrackRef.current?.close();
+            localVideoTrackRef.current?.close();
+            if (joinedRef.current) agoraClient.leave().catch(() => {});
         };
     }, []);
-
-    const ringPlayer = (targetUserId, wantsAudio, wantsVideo) => {
-        sendWsMessage({
-            type: 'webrtc:requestCall',
-            targetUserId,
-            wantsAudio,
-            wantsVideo
-        });
-        toast.info("Call request sent");
-    };
 
     return (
         <MediaContext.Provider value={{
             isAudioActive, toggleAudio,
             isVideoActive, toggleVideo,
-            localVideoStream, remoteVideoStreams,
-            remoteProducersMetadata, ringPlayer
+            localVideoTrack,       // Agora ILocalVideoTrack (used by VideoChat)
+            remoteVideoTracks,     // Agora IRemoteVideoTrack[] (used by VideoChat)
+            // Keep legacy prop names so VideoChat/RoomDashboard don't need changes
+            localVideoStream: localVideoTrack,
+            remoteVideoStreams: remoteVideoTracks,
+            remoteProducersMetadata,
+            ringPlayer,
         }}>
             {children}
             {incomingCall && (
@@ -535,28 +303,14 @@ export const MediaProvider = ({ children }) => {
                     <div className="text-sm">
                         <div className="font-semibold">{incomingCall.callerName} is calling</div>
                         <div className="text-white/70 text-xs">
-                            {incomingCall.wantsAudio && incomingCall.wantsVideo
-                                ? "Audio + Video"
-                                : incomingCall.wantsVideo
-                                    ? "Video call"
-                                    : "Audio call"}
+                            {incomingCall.wantsAudio && incomingCall.wantsVideo ? 'Audio + Video' : incomingCall.wantsVideo ? 'Video call' : 'Audio call'}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={declineIncomingCall}
-                            className="px-3 py-1.5 rounded-md text-sm bg-red-500/20 text-red-300 hover:bg-red-500/30"
-                        >
-                            Decline
-                        </button>
-                        <button
-                            type="button"
-                            onClick={acceptIncomingCall}
-                            className="px-3 py-1.5 rounded-md text-sm bg-green-500/20 text-green-300 hover:bg-green-500/30"
-                        >
-                            Accept
-                        </button>
+                        <button type="button" onClick={declineIncomingCall}
+                            className="px-3 py-1.5 rounded-md text-sm bg-red-500/20 text-red-300 hover:bg-red-500/30">Decline</button>
+                        <button type="button" onClick={acceptIncomingCall}
+                            className="px-3 py-1.5 rounded-md text-sm bg-green-500/20 text-green-300 hover:bg-green-500/30">Accept</button>
                     </div>
                 </div>
             )}
@@ -565,4 +319,3 @@ export const MediaProvider = ({ children }) => {
 };
 
 export const useMedia = () => useContext(MediaContext);
-// forced sync update
