@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,mjs}"],
+        maximumFileSizeToCacheInBytes: 5242880, // 5MB limit to allow Agora SDK chunk
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
