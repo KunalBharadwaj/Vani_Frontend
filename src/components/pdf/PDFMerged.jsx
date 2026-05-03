@@ -26,12 +26,15 @@ import {
   Hand,
   History,
   Eraser,
-  Menu, Sun, Moon, LogOut, PaintBucket, Copy, Check, Mic, MicOff, Video, VideoOff
+  Menu, Sun, Moon, LogOut, PaintBucket, Copy, Check, Mic, MicOff, Video, VideoOff,
+  Sparkles
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
 import { Link } from 'react-router-dom';
 import { useMedia } from "@/context/MediaContext";
+
+import ReactMarkdown from 'react-markdown';
 
 // Configure PDF.js worker from public folder
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -66,6 +69,11 @@ const PDFMerged = () => {
   const { theme, toggleTheme } = useTheme();
   const { isAudioActive, toggleAudio, isVideoActive, toggleVideo } = useMedia();
   const searchString = searchParams.toString() ? `?${searchParams.toString()}` : "";
+
+  // Magic Search State
+  const [isMagicSearch, setIsMagicSearch] = useState(false);
+  const [magicSearchResponse, setMagicSearchResponse] = useState("");
+  const [showMagicSearchModal, setShowMagicSearchModal] = useState(false);
 
   // Generate a room if none exists, but only if we are actively viewing the PDF section
   useEffect(() => {
@@ -109,6 +117,7 @@ const PDFMerged = () => {
   const canvasRefs = useRef({});
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef(null);
+  const strokeInitialImageRef = useRef(null);
   const activeCanvasPageRef = useRef(1);
   const annotationHistoryRef = useRef([]);   // stack of {page, data} for undo
   const redoHistoryRef = useRef([]);         // stack of {page, data} for redo
@@ -494,27 +503,48 @@ const PDFMerged = () => {
   };
 
   const onPointerDown = (e) => {
-    if (!annotating) return; // Native scroll handles non-annotation interaction
+    if (!annotating && !isMagicSearch) return; // Native scroll handles non-annotation interaction
     const targetCanvas = e.target;
     if (targetCanvas.tagName !== 'CANVAS') return;
     e.preventDefault();
     isDrawingRef.current = true;
-    lastPointRef.current = getCanvasPos(e, targetCanvas);
+    
     const pageNum = Number(targetCanvas.dataset.page);
     activeCanvasPageRef.current = pageNum;
-    saveAnnotationSnapshot(pageNum);
+    
+    const c = canvasRefs.current[pageNum];
+    const pos = getCanvasPos(e, targetCanvas);
+    lastPointRef.current = isMagicSearch ? { start: pos, end: pos } : pos;
+    
+    if (c) {
+      strokeInitialImageRef.current = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+    }
+    if (!isMagicSearch) saveAnnotationSnapshot(pageNum);
   };
 
   const onPointerMove = (e) => {
-    if (!annotating || !isDrawingRef.current) return;
-    e.preventDefault();
+    if (!isDrawingRef.current) return;
     const c = canvasRefs.current[activeCanvasPageRef.current];
     if (!c) return;
     const pos = getCanvasPos(e, c);
+    const ctx = c.getContext('2d');
+    
+    if (isMagicSearch) {
+      lastPointRef.current.end = pos;
+      if (strokeInitialImageRef.current) ctx.putImageData(strokeInitialImageRef.current, 0, 0);
+      ctx.save();
+      ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 2; ctx.lineDashOffset = 0; ctx.setLineDash([5, 5]);
+      const { start, end } = lastPointRef.current;
+      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+      ctx.restore();
+      return;
+    }
+
+    if (!annotating) return;
+    e.preventDefault();
     const last = lastPointRef.current;
     if (!pos || !last) return;
 
-    const ctx = c?.getContext('2d');
     if (!ctx) return;
 
     ctx.beginPath();
@@ -533,17 +563,65 @@ const PDFMerged = () => {
 
   const onPointerUp = () => {
     isPanningRef.current = false;
-    if (isDrawingRef.current) {
-        const c = canvasRefs.current[activeCanvasPageRef.current];
-        if (pdfMap && c) {
-            const dataUrl = c.toDataURL('image/webp', 0.6);
-            // Update self-echo guard BEFORE setting into Yjs
-            lastRemoteCanvasOverlayRef.current[activeCanvasPageRef.current] = dataUrl;
-            pdfMap.set(`canvasOverlay_${activeCanvasPageRef.current}`, dataUrl);
+    if (!isDrawingRef.current) return;
+    
+    const c = canvasRefs.current[activeCanvasPageRef.current];
+    
+    if (isMagicSearch && lastPointRef.current && strokeInitialImageRef.current) {
+        c.getContext('2d').putImageData(strokeInitialImageRef.current, 0, 0);
+        
+        const { start, end } = lastPointRef.current;
+        const x1 = Math.min(start.x, end.x);
+        const y1 = Math.min(start.y, end.y);
+        const x2 = Math.max(start.x, end.x);
+        const y2 = Math.max(start.y, end.y);
+        const width = Math.max(1, x2 - x1);
+        const height = Math.max(1, y2 - y1);
+        
+        const parent = c.parentElement;
+        const pdfCanvas = parent ? parent.querySelector('.react-pdf__Page__canvas') : null;
+        
+        if (pdfCanvas && c) {
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext("2d");
+            
+            tempCtx.drawImage(pdfCanvas, x1, y1, width, height, 0, 0, width, height);
+            tempCtx.drawImage(c, x1, y1, width, height, 0, 0, width, height);
+            
+            tempCanvas.toBlob((blob) => {
+              const formData = new FormData();
+              formData.append("file", blob, "crop.png");
+              toast.loading("Analyzing region...", { id: "magic_search" });
+              const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+              fetch(backendUrl + "/api/ai/process", {
+                method: "POST",
+                body: formData,
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+              }).then(res => res.json()).then(data => {
+                if (data.error) throw new Error(data.error);
+                toast.success("Analysis complete", { id: "magic_search" });
+                setMagicSearchResponse(data.response);
+                setShowMagicSearchModal(true);
+                setIsMagicSearch(false);
+                setAnnotating(true);
+              }).catch(err => {
+                toast.error("Analysis failed", { id: "magic_search" });
+                setIsMagicSearch(false);
+                setAnnotating(true);
+              });
+            }, "image/png");
         }
+    } else if (annotating && c && pdfMap) {
+        const dataUrl = c.toDataURL('image/webp', 0.6);
+        lastRemoteCanvasOverlayRef.current[activeCanvasPageRef.current] = dataUrl;
+        pdfMap.set(`canvasOverlay_${activeCanvasPageRef.current}`, dataUrl);
     }
+    
     isDrawingRef.current = false;
     lastPointRef.current = null;
+    strokeInitialImageRef.current = null;
   };
 
   // ─── Keyboard navigation ───────────────────────────────────────
@@ -638,6 +716,25 @@ const PDFMerged = () => {
            {(!roomState?.users || roomState.users.length === 0) && (
               <div className="text-center text-sm text-toolbar-foreground/40 py-8">No members connected</div>
            )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const magicSearchModalJSX = showMagicSearchModal && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b dark:border-zinc-800">
+          <h2 className="text-lg font-semibold flex items-center gap-2 text-primary"><Sparkles className="w-5 h-5"/> Magic Search Results</h2>
+          <button onClick={() => setShowMagicSearchModal(false)} className="p-1 hover:bg-black/5 rounded text-toolbar-foreground/60 hover:text-red-500"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-6 max-h-[70vh] overflow-y-auto">
+           <div className="prose prose-sm dark:prose-invert max-w-none">
+             <ReactMarkdown>{magicSearchResponse || ''}</ReactMarkdown>
+           </div>
+        </div>
+        <div className="p-4 border-t dark:border-zinc-800 flex justify-end">
+          <button onClick={() => setShowMagicSearchModal(false)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Close</button>
         </div>
       </div>
     </div>
@@ -803,16 +900,25 @@ const PDFMerged = () => {
             <div className="w-px h-6 bg-toolbar-foreground/20 mx-1" />
             {/* Scroll/Pan */}
             <button
-              onClick={() => { setAnnotating(false); setIsErasing(false); }}
-              className={`p-2 rounded-xl transition-colors ${!annotating ? "bg-primary/10 text-primary" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
+              onClick={() => { setAnnotating(false); setIsErasing(false); setIsMagicSearch(false); }}
+              className={`p-2 rounded-xl transition-colors ${(!annotating && !isMagicSearch) ? "bg-primary/10 text-primary" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
               title="Pan / Scroll Mode"
             >
               <Hand className="h-4 w-4" />
             </button>
 
+            {/* Magic Search */}
+            <button
+              onClick={() => { setIsMagicSearch(true); setAnnotating(false); setIsErasing(false); }}
+              className={`p-2 rounded-xl transition-colors ${isMagicSearch ? "bg-blue-500/10 text-blue-500" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
+              title="Circle to Search"
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+
             {/* Annotate */}
             <button
-              onClick={() => { setAnnotating(true); setIsErasing(false); }}
+              onClick={() => { setAnnotating(true); setIsErasing(false); setIsMagicSearch(false); }}
               className={`p-2 rounded-xl transition-colors ${annotating && !isErasing ? "bg-primary/10 text-primary" : "text-toolbar-foreground/70 hover:bg-toolbar-hover"}`}
               title="Pen Tool"
             >
@@ -970,8 +1076,8 @@ const PDFMerged = () => {
                     style={{
                       width: '100%',
                       height: '100%',
-                      cursor: annotating ? (isErasing ? 'cell' : 'crosshair') : 'default',
-                      pointerEvents: annotating ? 'auto' : 'none',
+                      cursor: (annotating || isMagicSearch) ? (isErasing ? 'cell' : 'crosshair') : 'default',
+                      pointerEvents: (annotating || isMagicSearch) ? 'auto' : 'none',
                     }}
                     onMouseDown={onPointerDown}
                     onMouseMove={onPointerMove}
@@ -990,6 +1096,7 @@ const PDFMerged = () => {
 
       {historyModalJSX}
       {dashboardModalJSX}
+      {magicSearchModalJSX}
     </div>
   );
 };

@@ -176,10 +176,14 @@ export const PaintCanvas = () => {
   const isPanningRef = useRef(false);
   const panOriginRef = useRef({ cx: 0, cy: 0, vx: 0, vy: 0 });
   const isSpaceRef = useRef(false);
-  // Convert screen px (relative to canvas) → world coords
   const toWorld = useCallback((sx, sy) => {
     const { x, y, scale } = viewportRef.current;
     return { x: (sx - x) / scale, y: (sy - y) / scale };
+  }, []);
+  // Convert world coords → screen px
+  const toScreen = useCallback((wx, wy) => {
+    const { x, y, scale } = viewportRef.current;
+    return { x: wx * scale + x, y: wy * scale + y };
   }, []);
 
   // Sync theme changes with default pen background behavior
@@ -589,10 +593,13 @@ export const PaintCanvas = () => {
 
     if (activeTool === "magic_search" && currentStrokeRef.current) {
       const { start, end } = currentStrokeRef.current;
-      const x1 = Math.min(start.x, end.x);
-      const y1 = Math.min(start.y, end.y);
-      const x2 = Math.max(start.x, end.x);
-      const y2 = Math.max(start.y, end.y);
+      // Convert world coords to screen coords because the physical canvas is in screen space
+      const sStart = toScreen(start.x, start.y);
+      const sEnd = toScreen(end.x, end.y);
+      const x1 = Math.min(sStart.x, sEnd.x);
+      const y1 = Math.min(sStart.y, sEnd.y);
+      const x2 = Math.max(sStart.x, sEnd.x);
+      const y2 = Math.max(sStart.y, sEnd.y);
 
       const canvas = canvasRef.current;
       if (canvas) {

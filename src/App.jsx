@@ -61,8 +61,13 @@ const PersistentPages = () => {
 
 const AuthWrapper = ({ children }) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(() => localStorage.getItem("vani_auth_token"));
+  const [loading, setLoading] = useState(!token);
+
+  useEffect(() => {
+    if (token) localStorage.setItem("vani_auth_token", token);
+    else localStorage.removeItem("vani_auth_token");
+  }, [token]);
 
   useEffect(() => {
     // A-1: Check backend for valid cookie if no URL token exists
@@ -85,6 +90,8 @@ const AuthWrapper = ({ children }) => {
       return;
     }
 
+    if (token) return; // Skip network check if we already have the token
+
     // Try silent auth via httpOnly cookie
     const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vanibackend-production.up.railway.app";
     fetch(`${backendUrl}/api/auth/me`, { credentials: "omit" }) // We will use 'include' when properly set up, but backend runs on port 10000. Actually we must use 'include'.
@@ -99,7 +106,7 @@ const AuthWrapper = ({ children }) => {
           .catch(() => { })
           .finally(() => setLoading(false));
       });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, token]);
 
   if (loading) return <div style={{ padding: 20 }}>Authenticating...</div>;
   if (!token) return <Login />;
