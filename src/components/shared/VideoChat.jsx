@@ -6,7 +6,7 @@ import { Maximize2, Minimize2, PhoneOff, Video } from 'lucide-react';
  * Renders a single Agora video track (local or remote).
  * Agora tracks use track.play(element) rather than srcObject.
  */
-const VideoStream = ({ track, isLocal, label }) => {
+const VideoStream = ({ track, isLocal, label, isMaximized }) => {
     const containerRef = useRef(null);
 
     useEffect(() => {
@@ -19,7 +19,7 @@ const VideoStream = ({ track, isLocal, label }) => {
     }, [track, isLocal]);
 
     return (
-        <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border border-white/10 shadow-lg">
+        <div className={`relative bg-black rounded-lg overflow-hidden border border-white/10 shadow-lg ${isMaximized ? 'w-full h-full' : 'w-full aspect-video'}`}>
             {track ? (
                 <div
                     ref={containerRef}
@@ -91,8 +91,8 @@ export const VideoChat = () => {
                     style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
                 >
                     {allStreams.map(({ track, isLocal, id, label }) => (
-                        <div key={id} className="min-h-0 min-w-0">
-                            <VideoStream track={track} isLocal={isLocal} label={label} />
+                        <div key={id} className="min-h-0 min-w-0 flex items-center justify-center">
+                            <VideoStream track={track} isLocal={isLocal} label={label} isMaximized={isMaximized} />
                         </div>
                     ))}
                 </div>
