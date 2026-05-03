@@ -627,6 +627,9 @@ const PDFMerged = () => {
   // ─── Keyboard navigation ───────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ignore if typing in input fields (like the AI assistant)
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
       if (!pdfDataUrl) return;
       if (!isOwnerRef.current) return; // Only owner can navigate with keyboard
       if (e.key === '+' || e.key === '=') zoomIn();

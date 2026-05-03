@@ -358,9 +358,13 @@ export const PaintCanvas = () => {
         vp.x = ox - (ox - vp.x) * (ns / vp.scale);
         vp.y = oy - (oy - vp.y) * (ns / vp.scale);
         vp.scale = ns;
-      } else { vp.x -= e.deltaX; vp.y -= e.deltaY; }
+        bumpVp(); // Update zoom UI
+      } else { 
+        vp.x -= e.deltaX; 
+        vp.y -= e.deltaY; 
+        // No bumpVp for panning, avoids heavy React re-renders!
+      }
       
-      bumpVp();
       if (!rafId) {
         rafId = requestAnimationFrame(() => {
           redraw();
@@ -517,13 +521,21 @@ export const PaintCanvas = () => {
     else if (["rectangle", "circle", "line", "magic_search"].includes(activeTool)) currentStrokeRef.current = { id: newId(), authorId, type: "shape", tool: activeTool, color: activeColor, size: brushSize, start: pos, end: pos };
   };
 
+  const rafRef = useRef(null);
+
   const handlePointerMove = (e) => {
     // Pan mode
     if (isPanningRef.current) {
       const raw = getRawPos(e); if (!raw) return;
       viewportRef.current.x = panOriginRef.current.vx + (raw.x - panOriginRef.current.cx);
       viewportRef.current.y = panOriginRef.current.vy + (raw.y - panOriginRef.current.cy);
-      bumpVp(); redraw(); return;
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(() => {
+          redraw();
+          rafRef.current = null;
+        });
+      }
+      return;
     }
     if (!isDrawing.current || dragMode.current) {
       if (dragMode.current) {
@@ -552,31 +564,41 @@ export const PaintCanvas = () => {
       lastPoint.current = pos; return;
     }
     if (!currentStrokeRef.current) return;
+
     if (activeTool === "pencil" || activeTool === "highlighter") {
       currentStrokeRef.current.points.push([pos.x, pos.y, e.pressure || 0.5]);
-      if (strokeInitialImageRef.current) ctx.putImageData(strokeInitialImageRef.current, 0, 0);
-      const pathData = getSvgPathFromStroke(getStroke(currentStrokeRef.current.points, { size: brushSize, thinning: activeTool === "highlighter" ? 0 : 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: e.pointerType !== "pen" }));
-      if (pathData) {
-        // Apply viewport so live preview aligns with world-space stroke coords
-        const { x: vx, y: vy, scale: vs } = viewportRef.current;
-        ctx.save(); ctx.setTransform(vs, 0, 0, vs, vx, vy);
-        ctx.globalAlpha = activeTool === "highlighter" ? 0.4 : 1;
-        ctx.fillStyle = activeColor; ctx.fill(new Path2D(pathData));
-        ctx.restore();
-      }
+      currentStrokeRef.current._path = null; // Invalidate cached path
     } else if (["rectangle", "circle", "line", "magic_search"].includes(activeTool)) {
-      currentStrokeRef.current.end = pos; if (strokeInitialImageRef.current) ctx.putImageData(strokeInitialImageRef.current, 0, 0);
-      const { x: vx, y: vy, scale: vs } = viewportRef.current;
-      ctx.save(); ctx.setTransform(vs, 0, 0, vs, vx, vy);
-      ctx.strokeStyle = activeTool === "magic_search" ? "#3b82f6" : activeColor; ctx.lineWidth = brushSize; ctx.lineCap = "round"; ctx.lineJoin = "round";
-      const { start, end } = currentStrokeRef.current;
-      if (activeTool === "rectangle" || activeTool === "magic_search") {
-        if (activeTool === "magic_search") ctx.setLineDash([5, 5]);
-        ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
-      }
-      else if (activeTool === "circle") { ctx.beginPath(); ctx.arc(start.x, start.y, Math.hypot(end.x - start.x, end.y - start.y), 0, Math.PI * 2); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke(); }
-      ctx.restore();
+      currentStrokeRef.current.end = pos;
+    }
+
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        if (!currentStrokeRef.current) {
+           rafRef.current = null;
+           return;
+        }
+
+        if (activeTool === "magic_search") {
+          redraw(); // draws background strokes
+          const ctx = getCtx();
+          if (ctx) {
+            const { x: vx, y: vy, scale: vs } = viewportRef.current;
+            ctx.save(); ctx.setTransform(vs, 0, 0, vs, vx, vy);
+            ctx.strokeStyle = "#3b82f6"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+            const { start, end } = currentStrokeRef.current;
+            ctx.setLineDash([5 / vs, 5 / vs]); // Scale dash pattern inversely
+            ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+            ctx.restore();
+          }
+        } else {
+          // Draw all committed strokes + the current stroke
+          const strokesToDraw = [...getCurrentStrokes(), currentStrokeRef.current];
+          redraw(strokesToDraw);
+        }
+
+        rafRef.current = null;
+      });
     }
     lastPoint.current = pos;
   };
@@ -651,6 +673,7 @@ export const PaintCanvas = () => {
       pushUndoAction({ type: "add", strokes: [currentStrokeRef.current] });
       const strokes = [...getCurrentStrokes(), currentStrokeRef.current];
       setCurrentStrokes(strokes); currentStrokeRef.current = null; syncToYjs(strokes);
+      redraw(); // explicitly render the final committed state
     }
     lastPoint.current = null; startPoint.current = null;
   };
@@ -764,6 +787,9 @@ export const PaintCanvas = () => {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Ignore if typing in input fields (like the AI assistant)
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
       if (e.ctrlKey || e.metaKey) {
         if (e.key === "z") { e.preventDefault(); handleUndo(); } else if (e.key === "y") { e.preventDefault(); handleRedo(); } else if (e.key === "s") { e.preventDefault(); handleSave(); }
       } else {
