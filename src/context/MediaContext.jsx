@@ -10,7 +10,7 @@ const MediaContext = createContext(null);
 // Agora client — one per app lifecycle, not per component mount
 const agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://vanibackend-production.up.railway.app';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://vani-backend-mjsl.onrender.com';
 
 export const MediaProvider = ({ children }) => {
     const [searchParams] = useSearchParams();

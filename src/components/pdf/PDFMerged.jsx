@@ -290,7 +290,7 @@ const PDFMerged = () => {
 
       // Record to Session History Database
       if (token && roomId) {
-        const backendUrl = import.meta.env?.VITE_BACKEND_URL || 'https://vanibackend-production.up.railway.app';
+        const backendUrl = import.meta.env?.VITE_BACKEND_URL || 'https://vani-backend-mjsl.onrender.com';
         fetch(`${backendUrl}/api/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -645,7 +645,7 @@ const PDFMerged = () => {
   const loadHistory = async () => {
     try {
       if (token) {
-        const backendUrl = import.meta.env?.VITE_BACKEND_URL || 'https://vanibackend-production.up.railway.app';
+        const backendUrl = import.meta.env?.VITE_BACKEND_URL || 'https://vani-backend-mjsl.onrender.com';
         const res = await fetch(`${backendUrl}/api/sessions`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });

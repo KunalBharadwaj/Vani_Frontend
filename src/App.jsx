@@ -93,7 +93,7 @@ const AuthWrapper = ({ children }) => {
     if (token) return; // Skip network check if we already have the token
 
     // Try silent auth via httpOnly cookie
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vanibackend-production.up.railway.app";
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vani-backend-mjsl.onrender.com";
     fetch(`${backendUrl}/api/auth/me`, { credentials: "omit" }) // We will use 'include' when properly set up, but backend runs on port 10000. Actually we must use 'include'.
       .catch(() => null) // Ignore fetch failures (handled implicitly)
       .finally(() => {
