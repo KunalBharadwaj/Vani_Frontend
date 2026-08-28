@@ -2,7 +2,7 @@
   "name": "chanakya-frontend",
   "productName": "Chanakya Frontend",
   "description": "Educational Drawing Application for Raspberry Pi",
-  "author": "Aman Raghuwanshi",
+  "author": "Kunal Bharadwaj & Aman Raghuwanshi",
   "private": true,
   "version": "1.0.0",
   "scripts": {

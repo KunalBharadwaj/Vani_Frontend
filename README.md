@@ -1,180 +1,125 @@
-# 🎨 Chanakya - Drawing Application
+# Vani — Real-time Collaborative Notes, PDF & Whiteboard
 
-A professional drawing/paint application for Raspberry Pi 5, delivered as a browser-based web app (installable as a PWA).
+A multi-user, real-time collaborative workspace: a shared **infinite whiteboard**
+and **PDF annotator** with **live audio/video**, and **Chanakya**, an in-app AI
+assistant. Open a room link and everyone draws, annotates, talks, and edits the
+same document together — with conflict-free sync.
 
-![React](https://img.shields.io/badge/React-18-blue)
-![Vite](https://img.shields.io/badge/Vite-5-purple)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3-cyan)
-![License](https://img.shields.io/badge/License-MIT-green)
+[![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-5-646cff)](https://vitejs.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-38bdf8)](https://tailwindcss.com)
+[![Tests](https://img.shields.io/badge/tests-38%20unit%20%2B%204%20e2e-brightgreen)](#-testing--ci)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088ff)](.github/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-MIT-green)](#-license)
 
-## ✨ Features
+**🔗 Live demo:** https://vani-frontend.vercel.app &nbsp;·&nbsp; **Backend:** [KunalBharadwaj/Vani_Backend](https://github.com/KunalBharadwaj/Vani_Backend)
 
-- 🖌️ **Drawing Tools** - Pencil, Eraser, Highlighter, Shapes (Rectangle, Circle, Line), Fill bucket
-- 🎨 **Color Picker** - 24 preset colors + custom color selector
-- 📏 **Brush Size** - Adjustable brush size (1-100px)
-- ↩️ **Undo/Redo** - Full history support
-- 💾 **Save Options** - Gallery, PNG download, folder save (Chrome/Edge)
-- 🖼️ **Gallery** - View and load previously saved drawings
-- 📄 **PDF Support** - View and annotate PDF documents
-- 🌈 **Background Color** - Changeable canvas background
-- ⌨️ **Keyboard Shortcuts** - Quick tool switching
-- 📱 **Touch Support** - Works with touch screens
-- 🔌 **Offline Mode** - Works without internet connection
+> This is the **frontend** (React). The realtime server lives in a separate repo — see [Vani_Backend](https://github.com/KunalBharadwaj/Vani_Backend).
 
-## 🛠️ Tech Stack
+<!-- Tip: add a screenshot or GIF here for extra impact, e.g. ![Vani](docs/demo.gif) -->
 
-| Technology   | Purpose              |
-| ------------ | -------------------- |
-| React 18     | UI Framework         |
-| Vite         | Build Tool           |
-| Tailwind CSS | Styling              |
-| shadcn/ui    | UI Components        |
-| HTML5 Canvas | Drawing              |
-| IndexedDB    | Data Storage         |
+---
 
-## 🚀 Quick Start
+## Why it's interesting (the hard parts)
 
-#### Prerequisites
+- **Conflict-free realtime collaboration** — documents are **Yjs CRDTs** synced over
+  a single WebSocket. Concurrent edits from many users merge without conflicts;
+  late joiners receive full state and stay consistent via a state-vector diff.
+- **A pooled, ref-counted connection layer** — multiple components share **one**
+  WebSocket and **one** Y.Doc per room (`hooks/useCollaboration.js`), with
+  exponential-backoff reconnect and graceful session-expiry handling.
+- **Live audio/video** via Agora, with call signaling ("ring") multiplexed over
+  the same collaboration socket.
+- **Real auth** — Google OAuth2 → JWT in an httpOnly cookie, a CSRF nonce, and a
+  WebSocket auth handshake.
+- **AI features** — an assistant chat plus "circle-to-search" (select any region
+  of a page and get an AI explanation).
 
-- Node.js 18+
-- npm or yarn
+## Features
 
-#### Installation
+- 🖊️ Infinite-canvas whiteboard — pencil/highlighter/shapes/fill, pressure-style
+  strokes (perfect-freehand), pan/zoom, per-user undo/redo, multi-page.
+- 📄 PDF viewing & annotation, shared live with the room.
+- 👥 Real-time multiplayer with presence and host/owner roles.
+- 🎙️ In-room audio & video calls.
+- 🤖 Chanakya AI assistant — chat, reminders, and image-region explanations.
+- 🌓 Light/dark theme, installable **PWA**, offline-capable canvas storage (IndexedDB).
+
+## Architecture
+
+The full write-up — system context, the OAuth→JWT→WS auth flow, the CRDT sync
+protocol, and a component map (with diagrams) — is in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+At a glance: React SPA → REST + one WebSocket → Node/TS server (Yjs + LevelDB,
+Agora tokens, OAuth). Both editors stay mounted across routes so their canvas
+state survives navigation.
+
+## Tech stack
+
+| Area | Tech |
+|------|------|
+| UI | React 18, Vite, Tailwind CSS, shadcn/ui |
+| Realtime | Yjs (CRDT), native WebSocket |
+| Media | Agora RTC SDK |
+| PDF / canvas | react-pdf, pdf.js, pdf-lib, perfect-freehand, HTML5 Canvas |
+| State/data | React Query, IndexedDB |
+| Testing | Vitest + Testing Library (unit), Playwright (e2e) |
+
+## 🧪 Testing & CI
+
+Engineering rigor is a first-class concern here, not an afterthought:
+
+- **38 unit tests** (Vitest + jsdom) covering the collaboration/auth logic,
+  panel geometry, color/stroke math, IndexedDB storage, and shared components.
+- **4 Playwright e2e tests** — auth gating, the assistant panel, and route rendering.
+- **CI** (GitHub Actions) runs **lint → unit tests → build** on every push and PR.
 
 ```bash
-# Clone the repository
-git clone https://github.com/raghuwanshi313/EDP_APP.git
+npm test          # unit tests (Vitest)
+npm run test:e2e  # end-to-end (Playwright)
+npm run lint      # ESLint
+```
 
-# Navigate to project directory
-cd EDP_APP
+## Getting started
 
-# Install dependencies
+```bash
 npm install
-
-# Start development server
-npm run dev
+cp .env.example .env     # set VITE_BACKEND_URL (defaults to the deployed backend)
+npm run dev              # http://localhost:8080
 ```
 
-Open your browser at `http://localhost:8080`
-
-### Production Build
+Production build:
 
 ```bash
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
+npm run build && npm run preview
 ```
 
-## ⌨️ Keyboard Shortcuts
+You'll also need the [backend](https://github.com/KunalBharadwaj/Vani_Backend)
+running (locally or the deployed instance) for auth, collaboration, media, and AI.
 
-| Key      | Action              |
-| -------- | ------------------- |
-| `P`      | Pencil tool         |
-| `E`      | Eraser tool         |
-| `R`      | Rectangle tool      |
-| `C`      | Circle tool         |
-| `L`      | Line tool           |
-| `G`      | Fill (paint bucket) |
-| `Ctrl+Z` | Undo                |
-| `Ctrl+Y` | Redo                |
-| `Ctrl+S` | Save                |
-
-## 📁 Project Structure
+## Project structure
 
 ```
 src/
 ├── components/
-│   ├── paint/
-│   │   ├── PaintCanvas.jsx    # Main canvas component
-│   │   ├── Toolbar.jsx        # Top toolbar
-│   │   ├── ToolButton.jsx     # Tool button component
-│   │   ├── ColorPalette.jsx   # Color picker
-│   │   ├── BrushSizeSlider.jsx# Brush size control
-│   │   └── SavedPagesGallery.jsx # Gallery component
-│   └── ui/                    # Reusable UI components
-├── services/
-│   └── storageService.js      # File saving utilities
-├── pages/
-│   ├── Index.jsx              # Home page
-│   └── NotFound.jsx           # 404 page
-└── App.jsx                    # Main app component
+│   ├── paint/        # Whiteboard canvas engine + tools
+│   ├── pdf/          # PDF viewer/annotator
+│   ├── ai/           # Chanakya assistant widget
+│   ├── shared/       # Room dashboard, video chat, shared modals
+│   └── ui/           # shadcn/ui primitives
+├── hooks/
+│   └── useCollaboration.js   # pooled WebSocket + Yjs client
+├── context/          # Media (Agora) + theme providers
+├── services/         # IndexedDB storage + export helpers
+├── lib/              # Pure, tested helpers (geometry, color, strokes, panel)
+└── pages/
 ```
 
-## 🍓 Raspberry Pi 5 Deployment
+## Authors
 
-Chanakya is optimized for Raspberry Pi 5! Complete automated setup available.
+- **Kunal Bharadwaj** — [@KunalBharadwaj](https://github.com/KunalBharadwaj)
+- **Aman Raghuwanshi** — [@raghuwanshi313](https://github.com/raghuwanshi313)
 
-### **Quick Setup (Recommended)**
+## License
 
-```bash
-# One-line installation
-cd ~ && git clone https://github.com/raghuwanshi313/EDP_APP.git && cd EDP_APP && chmod +x *.sh && ./complete-pi5-setup.sh
-```
-
-The setup script will:
-
-- ✅ Install Node.js 18+
-- ✅ Configure GPU acceleration
-- ✅ Setup Zram swap
-- ✅ Build production version
-- ✅ Create launch scripts
-- ✅ Configure auto-start (optional)
-
-### **Launch App**
-
-```bash
-# Start app in kiosk mode
-~/launch-chanakya.sh
-
-# Or manually
-cd ~/EDP_APP && npm run preview
-chromium-browser --kiosk http://localhost:4173
-```
-
-### **Full Documentation**
-
-See comprehensive guides:
-
-- 📘 **[RASPBERRY_PI_5_GUIDE.md](./RASPBERRY_PI_5_GUIDE.md)** - Complete deployment guide
-- 📗 **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** - Commands & troubleshooting
-- 📙 **[OFFLINE_MODE.md](./OFFLINE_MODE.md)** - Offline features
-
-### **Helpful Scripts**
-
-```bash
-./troubleshoot.sh          # Diagnose issues
-./monitor-performance.sh   # Monitor system performance
-./autostart-setup.sh      # Enable auto-start on boot
-```
-
-## 💾 Data Storage
-
-All data is stored locally - **no external APIs or databases required**:
-
-- **Gallery** - Saved in browser's localStorage
-- **Download** - Direct PNG download to device
-- **Folder Save** - Save to specific folder (Chrome/Edge)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 👨‍💻 Author
-
-**Aman Raghuwanshi**
-
-- GitHub: [@raghuwanshi313](https://github.com/raghuwanshi313)
-
----
-
-Made with ❤️ for Raspberry Pi
+MIT
