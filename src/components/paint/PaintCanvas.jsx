@@ -18,6 +18,7 @@ import { PDFDocument } from 'pdf-lib';
 import ReactMarkdown from 'react-markdown';
 import { useContext } from "react";
 import { useMedia } from "@/context/MediaContext";
+import { rectFromPoints } from "@/lib/geometry";
 
 function getSvgPathFromStroke(stroke) {
   if (!stroke.length) return "";
@@ -618,18 +619,11 @@ export const PaintCanvas = () => {
       // Convert world coords to screen coords because the physical canvas is in screen space
       const sStart = toScreen(start.x, start.y);
       const sEnd = toScreen(end.x, end.y);
-      const x1 = Math.min(sStart.x, sEnd.x);
-      const y1 = Math.min(sStart.y, sEnd.y);
-      const x2 = Math.max(sStart.x, sEnd.x);
-      const y2 = Math.max(sStart.y, sEnd.y);
+      const { x: x1, y: y1, width, height } = rectFromPoints(sStart, sEnd);
 
       const canvas = canvasRef.current;
       if (canvas) {
         redraw(undefined, backgroundColor);
-
-        // Ensure valid dimensions
-        const width = Math.max(1, x2 - x1);
-        const height = Math.max(1, y2 - y1);
 
         // Create off-screen canvas for cropping
         const tempCanvas = document.createElement("canvas");

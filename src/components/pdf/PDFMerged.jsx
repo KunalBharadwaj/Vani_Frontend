@@ -35,6 +35,7 @@ import { Link } from 'react-router-dom';
 import { useMedia } from "@/context/MediaContext";
 
 import ReactMarkdown from 'react-markdown';
+import { rectFromPoints } from "@/lib/geometry";
 
 // Configure PDF.js worker from public folder
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -571,12 +572,7 @@ const PDFMerged = () => {
         c.getContext('2d').putImageData(strokeInitialImageRef.current, 0, 0);
         
         const { start, end } = lastPointRef.current;
-        const x1 = Math.min(start.x, end.x);
-        const y1 = Math.min(start.y, end.y);
-        const x2 = Math.max(start.x, end.x);
-        const y2 = Math.max(start.y, end.y);
-        const width = Math.max(1, x2 - x1);
-        const height = Math.max(1, y2 - y1);
+        const { x: x1, y: y1, width, height } = rectFromPoints(start, end);
         
         const parent = c.parentElement;
         const pdfCanvas = parent ? parent.querySelector('.react-pdf__Page__canvas') : null;
