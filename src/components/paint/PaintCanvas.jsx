@@ -12,141 +12,14 @@ import { Users, Menu, Plus, X, Undo2, Redo2, Save, Download, Sun, Moon, LogOut, 
 import { RoomDashboard } from "@/components/shared/RoomDashboard";
 import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
 import { AuthContext } from "@/App";
-import { getStroke } from "perfect-freehand";
 import { useTheme } from "@/context/ThemeContext";
 import { PDFDocument } from 'pdf-lib';
 import ReactMarkdown from 'react-markdown';
 import { useContext } from "react";
 import { useMedia } from "@/context/MediaContext";
 import { rectFromPoints } from "@/lib/geometry";
+import { renderStrokes, strokeHitTest, compactStrokes } from "@/lib/strokes";
 
-function getSvgPathFromStroke(stroke) {
-  if (!stroke.length) return "";
-  const d = stroke.reduce((acc, [x0, y0], i, arr) => {
-    const [x1, y1] = arr[(i + 1) % arr.length];
-    acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
-    return acc;
-  }, ["M", stroke[0][0], stroke[0][1], "Q"]);
-  d.push("Z");
-  return d.join(" ");
-}
-
-// ─── Theme-aware color adaptation ─────────────────────────────────────────
-// Converts a hex color to HSL components.
-function hexToHsl(hex) {
-  let r = 0, g = 0, b = 0;
-  const cleaned = hex.replace('#', '');
-  if (cleaned.length === 3) {
-    r = parseInt(cleaned[0] + cleaned[0], 16);
-    g = parseInt(cleaned[1] + cleaned[1], 16);
-    b = parseInt(cleaned[2] + cleaned[2], 16);
-  } else {
-    r = parseInt(cleaned.slice(0, 2), 16);
-    g = parseInt(cleaned.slice(2, 4), 16);
-    b = parseInt(cleaned.slice(4, 6), 16);
-  }
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  return { h: h * 360, s: s * 100, l: l * 100 };
-}
-
-// Converts HSL back to a hex string.
-function hslToHex(h, s, l) {
-  s /= 100; l /= 100;
-  const k = (n) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  const toHex = (x) => Math.round(x * 255).toString(16).padStart(2, '0');
-  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
-}
-
-const themeColorCache = new Map();
-
-// Returns an adapted color visible on the current theme background without modifying the original.
-function adaptColorForTheme(color, isDark) {
-  if (!color || !color.startsWith('#')) return color;
-  const cacheKey = color + (isDark ? '-dark' : '-light');
-  if (themeColorCache.has(cacheKey)) return themeColorCache.get(cacheKey);
-
-  let result = color;
-  try {
-    const { h, s, l } = hexToHsl(color);
-    if (isDark) {
-      if (l < 45) result = hslToHex(h, Math.min(s + 10, 100), Math.max(l + 55, 75));
-    } else {
-      if (l > 75) result = hslToHex(h, Math.min(s + 10, 100), Math.min(l - 50, 35));
-    }
-  } catch { /* malformed color — fall through */ }
-
-  themeColorCache.set(cacheKey, result);
-  return result;
-}
-
-// skipFill=true when caller handles background separately (e.g. with a viewport transform)
-function renderStrokes(ctx, canvas, strokes, bgColor, isDark = false, skipFill = false) {
-  if (!skipFill) {
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-  for (const s of strokes) {
-    const drawColor = adaptColorForTheme(s.color, isDark);
-    if (s.type === "freehand") {
-      if (!s._path) {
-        const drawn = getStroke(s.points, { size: s.size, thinning: s.tool === "highlighter" ? 0 : 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: true });
-        s._path = getSvgPathFromStroke(drawn);
-      }
-      if (!s._path) continue;
-      ctx.save(); ctx.globalAlpha = s.opacity ?? 1; ctx.fillStyle = drawColor; ctx.fill(new Path2D(s._path)); ctx.restore();
-    } else if (s.type === "shape") {
-      ctx.save(); ctx.strokeStyle = drawColor; ctx.lineWidth = s.size; ctx.lineCap = "round"; ctx.lineJoin = "round";
-      const { start, end } = s;
-      if (s.tool === "rectangle") ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
-      else if (s.tool === "circle") { const r = Math.hypot(end.x - start.x, end.y - start.y); ctx.beginPath(); ctx.arc(start.x, start.y, r, 0, Math.PI * 2); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke(); }
-      ctx.restore();
-    } else if (s.type === "snapshot") {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      img.src = s.data;
-      // If already cached by the browser, onload may not fire — handle both
-      if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    }
-  }
-}
-
-function strokeHitTest(stroke, px, py, eraserRadius) {
-  if (stroke.type === "freehand") {
-    const threshold = eraserRadius + stroke.size / 2;
-    return stroke.points.some(([x, y]) => Math.hypot(x - px, y - py) < threshold);
-  }
-  if (stroke.type === "shape") {
-    const { start, end } = stroke;
-    const minX = Math.min(start.x, end.x) - eraserRadius, maxX = Math.max(start.x, end.x) + eraserRadius;
-    const minY = Math.min(start.y, end.y) - eraserRadius, maxY = Math.max(start.y, end.y) + eraserRadius;
-    return px >= minX && px <= maxX && py >= minY && py <= maxY;
-  }
-  return false;
-}
-
-function compactStrokes(strokes) {
-  return strokes.map((s) => {
-    if (s.type === "freehand") {
-      const { _path, ...rest } = s; // D-1: strip internal path cache before syncing
-      return { ...rest, points: rest.points.map(([x, y, p]) => [Math.round(x * 2) / 2, Math.round(y * 2) / 2, Math.round(p * 100) / 100]) };
-    }
-    return s;
-  });
-}
 
 // Use crypto.randomUUID() for collision-safe stroke IDs across tabs/clients/reloads
 const newId = () => crypto.randomUUID();
