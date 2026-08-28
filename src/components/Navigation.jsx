@@ -1,6 +1,6 @@
 // Compact navigation pill — icons only to avoid covering canvas controls.
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { FileText, PaintBucket, LogOut, Sun, Moon, Copy, Check } from 'lucide-react';
+import { FileText, NotebookPen, LogOut, Sun, Moon, Copy, Check } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useState } from 'react';
 
@@ -24,7 +24,7 @@ const Navigation = () => {
     window.location.href = '/';
   };
 
-  const isPaint = location.pathname === '/';
+  const isNotes = location.pathname === '/';
   const isPdf = location.pathname === '/pdf';
 
   const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95';
@@ -36,10 +36,10 @@ const Navigation = () => {
       className="glass-panel animate-glass-in fixed bottom-3 right-3 z-50 flex items-center gap-0.5 rounded-xl p-1"
       title="Navigation"
     >
-      {/* Paint */}
+      {/* Notes */}
       <Link to={`/${searchString}`}>
-        <button className={isPaint ? activeIconBtn : iconBtn} title="Paint">
-          <PaintBucket className="h-3.5 w-3.5" />
+        <button className={isNotes ? activeIconBtn : iconBtn} title="Notes">
+          <NotebookPen className="h-3.5 w-3.5" />
         </button>
       </Link>
 

@@ -1,5 +1,5 @@
 // Shared Room Dashboard modal - shows participants and allows owner assignment.
-// Used by both Paint and PDF Editor.
+// Used by both Notes and PDF Editor.
 import { Users, X, Mic, Video, PhoneCall } from 'lucide-react';
 import { useContext } from 'react';
 import { AuthContext } from '@/App';

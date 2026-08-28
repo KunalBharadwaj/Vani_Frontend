@@ -38,7 +38,7 @@ export const Login = () => {
             <span className="text-2xl font-bold text-white">C</span>
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-            Chanakya Paint
+            Chanakya Notes
           </h1>
           <p className="text-sm text-muted-foreground">Collaborative educational drawing board.</p>
         </div>

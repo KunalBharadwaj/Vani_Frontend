@@ -24,7 +24,7 @@ const PDFPage = lazy(() => import("./pages/PDFPage"));
 // Single shared React Query client for the whole app.
 const queryClient = new QueryClient();
 
-// Keep both Paint and PDF pages mounted across route changes so their state
+// Keep both Notes and PDF pages mounted across route changes so their state
 // (canvas drawings, open files, annotations) is preserved when navigating.
 // IMPORTANT: We use visibility:hidden + position:fixed instead of display:none
 // because react-pdf canvases lose their rendered content when inside display:none
@@ -43,12 +43,12 @@ const hiddenStyle = {
 const PersistentPages = () => {
   const location = useLocation();
   const isPDFRoute = location.pathname === "/pdf";
-  const isPaintRoute = location.pathname === "/";
+  const isNotesRoute = location.pathname === "/";
 
   return (
     <>
-      {/* Paint page - always mounted, visible on / route */}
-      <div style={isPaintRoute ? undefined : hiddenStyle}>
+      {/* Notes page - always mounted, visible on / route */}
+      <div style={isNotesRoute ? undefined : hiddenStyle}>
         <Index />
       </div>
       {/* PDF page - always mounted, visible on /pdf route */}

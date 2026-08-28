@@ -1,5 +1,5 @@
 // Home page for the app.
-// Renders the main paint workspace component.
+// Renders the main notes workspace component.
 import { PaintCanvas } from "@/components/paint/PaintCanvas";
 
 const Index = () => {
