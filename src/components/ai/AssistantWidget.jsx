@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useContext } from "rea
 import { MessageSquare, X, Send, Mic, MicOff, Bell, GripHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { AuthContext } from "@/App";
+import { computePanelStyle as computePanelStyle_ } from "@/lib/panelPosition";
 
 export const AssistantWidget = () => {
   const token = useContext(AuthContext);
@@ -140,48 +141,9 @@ export const AssistantWidget = () => {
     }
   };
 
-  // Compute panel position based on available space around the button.
-  // We anchor the panel by the edge NEAREST the button (bottom/right when the
-  // button is at the bottom-right) so the panel grows *away* from the button.
-  // Anchoring by top-left instead would push a short panel far from the button
-  // and leave a gap, because the panel's height is dynamic (grows with content).
-  const computePanelStyle = () => {
-    const PW = Math.min(384, window.innerWidth - 32);
-    const PH = Math.min(window.innerHeight * 0.5, 520);
-    const BW = 56, BH = 56, GAP = 12;
-    const btnL = window.innerWidth  - btnPos.right - BW;
-    const btnT = window.innerHeight - btnPos.bottom - BH;
-    // Prefer opening upward when there is room above the button, else downward.
-    const openUp   = btnT >= PH + GAP || btnT >= window.innerHeight - btnT - BH;
-    // Open toward the left when the button sits close to the right edge.
-    const openLeft = (window.innerWidth - btnL) < PW + GAP;
-
-    const style = {
-      position: "fixed",
-      width: PW, maxHeight: PH, zIndex: 50,
-      display: "flex", flexDirection: "column",
-    };
-
-    // Vertical: anchor the edge next to the button so the panel hugs it.
-    if (openUp) {
-      // Panel bottom sits GAP above the button's top edge.
-      style.bottom = Math.max(8, btnPos.bottom + BH + GAP);
-    } else {
-      // Panel top sits GAP below the button's bottom edge.
-      style.top = Math.max(8, Math.min(window.innerHeight - PH - 8, btnT + BH + GAP));
-    }
-
-    // Horizontal: align the panel's near edge with the button's.
-    if (openLeft) {
-      // Panel right edge aligns with the button's right edge.
-      style.right = Math.max(8, Math.min(window.innerWidth - PW - 8, btnPos.right));
-    } else {
-      // Panel left edge aligns with the button's left edge.
-      style.left = Math.max(8, Math.min(window.innerWidth - PW - 8, btnL));
-    }
-
-    return style;
-  };
+  // Position the panel relative to the button. See lib/panelPosition for the
+  // geometry (extracted so it can be unit-tested without the DOM).
+  const computePanelStyle = () => computePanelStyle_(btnPos, window.innerWidth, window.innerHeight);
 
   return (
     <>
