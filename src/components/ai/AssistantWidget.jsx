@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useContext } from "react";
 import { MessageSquare, X, Send, Mic, MicOff, Bell, GripHorizontal } from "lucide-react";
 import { toast } from "sonner";
+import { AuthContext } from "@/App";
 
 export const AssistantWidget = () => {
+  const token = useContext(AuthContext);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     { text: "Hello! I am Chanakya, your AI assistant. How can I help you?", sender: "bot" }
@@ -118,7 +120,10 @@ export const AssistantWidget = () => {
       });
       const res = await fetch(`${backendUrl}/api/ai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ text, currentTime })
       });
       const data = await res.json();
