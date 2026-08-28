@@ -75,8 +75,24 @@ export function useCollaboration(roomId, token, onMessage = null) {
           }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           if (connection.heartbeatInterval) clearInterval(connection.heartbeatInterval);
+
+          // 4001 = server rejected our token (invalid/expired). Reconnecting with
+          // the same token loops forever, so clear the session and go to login
+          // instead of retrying.
+          if (event.code === 4001) {
+            console.warn("[Vani] WebSocket auth rejected (session expired). Clearing token and returning to login.");
+            connection.status = "unauthorized";
+            connection.listeners.forEach(l => l("unauthorized", connection.roomState));
+            roomConnections.delete(roomId);
+            if (localStorage.getItem("vani_auth_token")) {
+              localStorage.removeItem("vani_auth_token");
+              window.location.reload(); // AuthWrapper will show the Login screen
+            }
+            return;
+          }
+
           if (connection.refs > 0) {
             // B-1: Exponential backoff reconnect
             connection.status = "reconnecting";

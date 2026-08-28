@@ -5,7 +5,9 @@ export const ConnectionBanner = ({ status }) => {
 
   return (
     <div className="fixed top-0 left-0 w-full z-[100] flex justify-center p-2 pointer-events-none">
-      <div className="bg-red-500/90 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 backdrop-blur-sm pointer-events-auto">
+      <div className={`animate-glass-in backdrop-blur-xl text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 pointer-events-auto ${
+        status === "reconnecting" ? "bg-amber-500/85" : "bg-red-500/85"
+      }`}>
         {status === "reconnecting" ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />

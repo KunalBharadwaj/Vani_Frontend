@@ -27,13 +27,13 @@ const Navigation = () => {
   const isPaint = location.pathname === '/';
   const isPdf = location.pathname === '/pdf';
 
-  const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-colors';
-  const activeIconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg bg-toolbar-active text-accent-foreground transition-colors';
+  const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95';
+  const activeIconBtn = 'w-8 h-8 flex items-center justify-center rounded-lg bg-toolbar-active text-accent-foreground transition-all duration-150 shadow-[0_2px_10px_hsl(var(--toolbar-active)/0.45)]';
 
   return (
     /* Positioned bottom-right, compact icon cluster */
     <nav
-      className="fixed bottom-3 right-3 z-50 flex items-center gap-0.5 bg-toolbar border border-toolbar-foreground/10 rounded-xl shadow-lg p-1"
+      className="glass-panel animate-glass-in fixed bottom-3 right-3 z-50 flex items-center gap-0.5 rounded-xl p-1"
       title="Navigation"
     >
       {/* Paint */}

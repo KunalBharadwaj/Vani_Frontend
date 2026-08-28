@@ -817,14 +817,14 @@ export const PaintCanvas = () => {
         </div>
       </div>
       {/* Zoom badge */}
-      <div className="absolute bottom-14 right-3 z-40 pointer-events-none bg-toolbar/90 border border-toolbar-foreground/20 rounded px-2 py-0.5 text-xs font-mono text-toolbar-foreground/80">{zoomPct}%</div>
+      <div className="glass-panel absolute bottom-14 right-3 z-40 pointer-events-none rounded-lg px-2 py-0.5 text-xs font-mono text-toolbar-foreground/80">{zoomPct}%</div>
 
       {/* ── Top-Left: Universal Navigation & Hamburger Menu ────────────────── */}
       <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
         <div className="relative">
-          <button onClick={() => setShowMenu(v => !v)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Menu"><Menu className="w-4 h-4" /></button>
+          <button onClick={() => setShowMenu(v => !v)} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95" title="Menu"><Menu className="w-4 h-4" /></button>
           {showMenu && (
-            <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
+            <div className="glass-panel-strong animate-glass-in absolute top-11 left-0 w-56 rounded-xl overflow-hidden z-50">
               <div className="p-2 space-y-1">
                 <button onClick={() => { handleSave(); setShowMenu(false); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><Save className="w-4 h-4" /> Save to Gallery</button>
                 <button onClick={() => { handleDownload(); setShowMenu(false); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><Download className="w-4 h-4" /> Download PDF</button>
@@ -837,26 +837,26 @@ export const PaintCanvas = () => {
         </div>
 
         {/* Undo/Redo are adjacent to menu */}
-        <button onClick={handleUndo} disabled={!canUndo} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/15 text-toolbar-foreground hover:bg-toolbar-hover disabled:opacity-30 transition-colors shadow-sm"><Undo2 className="w-4 h-4" /></button>
-        <button onClick={handleRedo} disabled={!canRedo} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/15 text-toolbar-foreground hover:bg-toolbar-hover disabled:opacity-30 transition-colors shadow-sm"><Redo2 className="w-4 h-4" /></button>
+        <button onClick={handleUndo} disabled={!canUndo} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover disabled:opacity-30 transition-all duration-150 hover:scale-105 active:scale-95 disabled:hover:scale-100"><Undo2 className="w-4 h-4" /></button>
+        <button onClick={handleRedo} disabled={!canRedo} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover disabled:opacity-30 transition-all duration-150 hover:scale-105 active:scale-95 disabled:hover:scale-100"><Redo2 className="w-4 h-4" /></button>
       </div>
 
       {/* ── Top-Right: Dashboard & Streams ───────────────────────────────────────────── */}
       <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
-        <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
-        <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isVideoActive ? 'bg-blue-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
+        <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full transition-colors ${status === "connected" ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.7)]" : "bg-red-400"}`} />
+        <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 ${isVideoActive ? 'bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.45)]' : 'glass-panel text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
           {isVideoActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
         </button>
-        <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isAudioActive ? 'bg-green-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
+        <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 ${isAudioActive ? 'bg-green-500 text-white shadow-[0_4px_14px_rgba(34,197,94,0.45)]' : 'glass-panel text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
           {isAudioActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
         </button>
-        <button onClick={() => setShowDashboard(true)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Collaboration Dashboard"><Users className="w-4 h-4" /></button>
+        <button onClick={() => setShowDashboard(true)} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95" title="Collaboration Dashboard"><Users className="w-4 h-4" /></button>
       </div>
 
       {/* ── Top-Center: Drawing Tools ──────────────────────────────────────── */}
       {!isMaximized && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
-          <div className="bg-toolbar shadow-md border border-toolbar-foreground/15 rounded-xl px-1 py-0.5">
+          <div className="glass-panel-strong rounded-xl px-1 py-0.5">
             <Toolbar activeTool={activeTool} onToolChange={setActiveTool} activeColor={activeColor} onColorChange={setActiveColor} backgroundColor={backgroundColor} onBackgroundColorChange={setBackgroundColor} brushSize={brushSize} onBrushSizeChange={setBrushSize} onClear={handleClear} onSave={undefined} onLoadPage={handleLoadPage} canUndo={false} canRedo={false} onDownload={undefined} onDownloadAllPages={handleDownloadAllPages} onLoadBackupFile={undefined} onImportImage={handleImportImage} onAddPage={handleAddPage} onSwitchPage={handleSwitchPage} pages={pages} currentPageId={currentPageId} isMaximized={isMaximized} onToggleMaximize={() => setIsMaximized(!isMaximized)} orientation={orientation} onToggleOrientation={() => setOrientation(orientation === "portrait" ? "landscape" : "portrait")} onPlaceImage={handlePlaceImage} hasImportedImage={!!importedImage} backupFileRef={backupFileRef} />
           </div>
         </div>
@@ -864,16 +864,16 @@ export const PaintCanvas = () => {
 
       {/* ── Bottom-Center: Page Tabs ───────────────────────────────────────── */}
       {!isMaximized && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 pointer-events-auto bg-toolbar border border-toolbar-foreground/15 rounded-xl p-1 shadow-md max-w-[70vw] overflow-x-auto">
+        <div className="glass-panel-strong absolute bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 pointer-events-auto rounded-xl p-1 max-w-[70vw] overflow-x-auto">
           {pages.map((page) => (
             <div key={page.id} className="relative flex-shrink-0 flex items-center">
-              <button onClick={() => handleSwitchPage(page.id)} className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors whitespace-nowrap ${currentPageId === page.id ? "bg-toolbar-active text-accent-foreground pr-6" : "text-toolbar-foreground hover:bg-toolbar-hover"}`}>{page.name}</button>
+              <button onClick={() => handleSwitchPage(page.id)} className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-all duration-150 whitespace-nowrap ${currentPageId === page.id ? "bg-toolbar-active text-accent-foreground pr-6 shadow-[0_2px_10px_hsl(var(--toolbar-active)/0.4)]" : "text-toolbar-foreground hover:bg-toolbar-hover"}`}>{page.name}</button>
               {isHost && pages.length > 1 && (
                 <button onClick={(e) => { e.stopPropagation(); handleDeletePage(page.id); }} className={`absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full transition-colors ${currentPageId === page.id ? "text-accent-foreground/70 hover:text-accent-foreground hover:bg-white/10" : "text-toolbar-foreground/40 hover:text-red-400 hover:bg-red-500/10"}`} title={`Delete ${page.name}`}><X className="w-2.5 h-2.5" /></button>
               )}
             </div>
           ))}
-          <button onClick={handleAddPage} className="w-7 h-7 flex items-center justify-center rounded-lg text-toolbar-foreground/60 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-colors flex-shrink-0" title="Add Page"><Plus className="w-4 h-4" /></button>
+          <button onClick={handleAddPage} className="w-7 h-7 flex items-center justify-center rounded-lg text-toolbar-foreground/60 hover:bg-toolbar-hover hover:text-toolbar-foreground transition-all duration-150 hover:scale-110 flex-shrink-0" title="Add Page"><Plus className="w-4 h-4" /></button>
         </div>
       )}
 
@@ -882,9 +882,9 @@ export const PaintCanvas = () => {
 
       {/* ── Magic Search Response Modal ───────────────────────────────────────── */}
       {showMagicSearchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-toolbar border border-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-border">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="glass-panel-strong animate-glass-in rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b border-toolbar-foreground/10">
               <h2 className="text-lg font-semibold text-toolbar-foreground flex items-center gap-2">
                 <span className="text-blue-500">✨</span> Magic Search Results
               </h2>
@@ -899,10 +899,10 @@ export const PaintCanvas = () => {
                 <p>No response generated.</p>
               )}
             </div>
-            <div className="p-4 border-t border-border flex justify-end">
+            <div className="p-4 border-t border-toolbar-foreground/10 flex justify-end">
               <button
                 onClick={() => setShowMagicSearchModal(false)}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-150 hover:scale-105 active:scale-95 text-sm font-medium"
               >
                 Close
               </button>

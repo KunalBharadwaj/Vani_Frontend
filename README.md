@@ -1,25 +1,11 @@
-# 🎨 Chanakya - Native Desktop Drawing Application
+# 🎨 Chanakya - Drawing Application
 
-A professional drawing/paint application for Raspberry Pi 5, available as both a **native desktop app** (Electron) and web app.
+A professional drawing/paint application for Raspberry Pi 5, delivered as a browser-based web app (installable as a PWA).
 
 ![React](https://img.shields.io/badge/React-18-blue)
-![Electron](https://img.shields.io/badge/Electron-28-47848f)
 ![Vite](https://img.shields.io/badge/Vite-5-purple)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3-cyan)
 ![License](https://img.shields.io/badge/License-MIT-green)
-
-## 🚀 What's New: Native Desktop App!
-
-Chanakya is now available as a **native Raspberry Pi application**:
-
-✅ **Standalone Desktop App** - No browser needed  
-✅ **Native File Dialogs** - Real save/open dialogs  
-✅ **System Integration** - Desktop icon & menu  
-✅ **Better Performance** - Optimized for Raspberry Pi  
-✅ **Easy Installation** - One-click .deb package  
-✅ **Auto-start** - Launch on boot
-
-See [NATIVE_APP_CONVERSION.md](./NATIVE_APP_CONVERSION.md) for details.
 
 ## ✨ Features
 
@@ -27,7 +13,7 @@ See [NATIVE_APP_CONVERSION.md](./NATIVE_APP_CONVERSION.md) for details.
 - 🎨 **Color Picker** - 24 preset colors + custom color selector
 - 📏 **Brush Size** - Adjustable brush size (1-100px)
 - ↩️ **Undo/Redo** - Full history support
-- 💾 **Save Options** - Native file dialogs, gallery, PNG download
+- 💾 **Save Options** - Gallery, PNG download, folder save (Chrome/Edge)
 - 🖼️ **Gallery** - View and load previously saved drawings
 - 📄 **PDF Support** - View and annotate PDF documents
 - 🌈 **Background Color** - Changeable canvas background
@@ -40,7 +26,6 @@ See [NATIVE_APP_CONVERSION.md](./NATIVE_APP_CONVERSION.md) for details.
 | Technology   | Purpose              |
 | ------------ | -------------------- |
 | React 18     | UI Framework         |
-| Electron 28  | Native App Framework |
 | Vite         | Build Tool           |
 | Tailwind CSS | Styling              |
 | shadcn/ui    | UI Components        |
@@ -48,25 +33,6 @@ See [NATIVE_APP_CONVERSION.md](./NATIVE_APP_CONVERSION.md) for details.
 | IndexedDB    | Data Storage         |
 
 ## 🚀 Quick Start
-
-### Option 1: Native Desktop App (Recommended for Raspberry Pi)
-
-```bash
-# Clone repository
-git clone https://github.com/raghuwanshi313/EDP_APP.git
-cd EDP_APP
-
-# Run automated setup
-chmod +x setup-electron-pi.sh
-./setup-electron-pi.sh
-
-# Launch app
-~/launch-chanakya.sh
-```
-
-See **[NATIVE_APP_CONVERSION.md](./NATIVE_APP_CONVERSION.md)** for complete native app guide.
-
-### Option 2: Web App (Browser-based)
 
 #### Prerequisites
 

@@ -660,11 +660,11 @@ const PDFMerged = () => {
   };
 
   const historyModalJSX = showHistory && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b dark:border-zinc-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-left">
+      <div className="glass-panel-strong animate-glass-in rounded-2xl max-w-lg w-full overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-toolbar-foreground/10">
           <h2 className="text-lg font-semibold flex items-center gap-2"><History className="w-5 h-5"/> Session History</h2>
-          <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-black/5 rounded text-toolbar-foreground/60 hover:text-red-500"><X className="w-5 h-5"/></button>
+          <button onClick={() => setShowHistory(false)} className="p-1.5 rounded-lg hover:bg-toolbar-hover text-toolbar-foreground/60 hover:text-red-400 transition-all duration-150 hover:scale-105"><X className="w-5 h-5"/></button>
         </div>
         <div className="p-4 max-h-[60vh] overflow-y-auto">
           {historyDocs.length === 0 ? (
@@ -691,15 +691,15 @@ const PDFMerged = () => {
   );
 
   const dashboardModalJSX = showDashboard && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b dark:border-zinc-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-left">
+      <div className="glass-panel-strong animate-glass-in rounded-2xl max-w-md w-full overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-toolbar-foreground/10">
           <h2 className="text-lg font-semibold flex items-center gap-2"><Users className="w-5 h-5"/> Room Dashboard</h2>
-          <button onClick={() => setShowDashboard(false)} className="p-1 hover:bg-black/5 rounded text-toolbar-foreground/60 hover:text-red-500"><X className="w-5 h-5"/></button>
+          <button onClick={() => setShowDashboard(false)} className="p-1.5 rounded-lg hover:bg-toolbar-hover text-toolbar-foreground/60 hover:text-red-400 transition-all duration-150 hover:scale-105"><X className="w-5 h-5"/></button>
         </div>
         <div className="p-4 max-h-[60vh] overflow-y-auto space-y-2">
            {roomState?.users?.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 border dark:border-zinc-800 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg text-sm transition-colors">
+              <div key={u.id} className="flex items-center justify-between p-3 border dark:border-zinc-800 hover:bg-toolbar-hover rounded-lg text-sm transition-colors">
                 <div className="flex items-center gap-3">
                    <img src={u.picture || 'https://www.gravatar.com/avatar/?d=mp'} className="w-8 h-8 rounded-full shadow-sm" />
                    <div>
@@ -712,7 +712,7 @@ const PDFMerged = () => {
                    </div>
                 </div>
                 {isHost && roomState?.ownerId !== u.id && (
-                    <button onClick={() => sendWsMessage({ type: "assign_owner", targetUserId: u.id })} className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded transition-colors shadow-sm">Make Owner</button>
+                    <button onClick={() => sendWsMessage({ type: "assign_owner", targetUserId: u.id })} className="text-xs bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-lg transition-all duration-150 hover:scale-105 shadow-[0_2px_10px_hsl(var(--primary)/0.35)]">Make Owner</button>
                 )}
               </div>
            ))}
@@ -725,18 +725,18 @@ const PDFMerged = () => {
   );
 
   const magicSearchModalJSX = showMagicSearchModal && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 text-left">
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b dark:border-zinc-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-left">
+      <div className="glass-panel-strong animate-glass-in rounded-2xl max-w-2xl w-full overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-toolbar-foreground/10">
           <h2 className="text-lg font-semibold flex items-center gap-2 text-primary"><Sparkles className="w-5 h-5"/> Magic Search Results</h2>
-          <button onClick={() => setShowMagicSearchModal(false)} className="p-1 hover:bg-black/5 rounded text-toolbar-foreground/60 hover:text-red-500"><X className="w-5 h-5"/></button>
+          <button onClick={() => setShowMagicSearchModal(false)} className="p-1.5 rounded-lg hover:bg-toolbar-hover text-toolbar-foreground/60 hover:text-red-400 transition-all duration-150 hover:scale-105"><X className="w-5 h-5"/></button>
         </div>
         <div className="p-6 max-h-[70vh] overflow-y-auto">
            <div className="prose prose-sm dark:prose-invert max-w-none">
              <ReactMarkdown>{magicSearchResponse || ''}</ReactMarkdown>
            </div>
         </div>
-        <div className="p-4 border-t dark:border-zinc-800 flex justify-end">
+        <div className="p-4 border-t border-toolbar-foreground/10 flex justify-end">
           <button onClick={() => setShowMagicSearchModal(false)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">Close</button>
         </div>
       </div>
@@ -753,9 +753,9 @@ const PDFMerged = () => {
         {/* Floating Top-Left Status + Menu */}
         <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
           <div className="relative">
-            <button onClick={() => setShowMenu(v => !v)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Menu"><Menu className="w-4 h-4" /></button>
+            <button onClick={() => setShowMenu(v => !v)} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95" title="Menu"><Menu className="w-4 h-4" /></button>
             {showMenu && (
-              <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
+              <div className="glass-panel-strong animate-glass-in absolute top-11 left-0 w-56 rounded-xl overflow-hidden z-50">
                 <div className="p-2 space-y-1">
                   <button onClick={() => { setShowMenu(false); setShowHistory(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
                   <button onClick={() => { setShowMenu(false); setShowDashboard(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><Users className="w-4 h-4 text-blue-400" /> Dashboard</button>
@@ -763,7 +763,7 @@ const PDFMerged = () => {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
+          <div className="glass-panel flex items-center gap-3 rounded-xl px-4 py-2 pointer-events-auto">
             <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight flex items-center gap-2">
               <FileText className="h-4 w-4" />
               PDF Editor
@@ -773,14 +773,14 @@ const PDFMerged = () => {
 
         {/* Top-Right Tools */}
         <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
-          <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
-          <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isVideoActive ? 'bg-blue-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
+          <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full transition-colors ${status === "connected" ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.7)]" : "bg-red-400"}`} />
+          <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 ${isVideoActive ? 'bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.45)]' : 'glass-panel text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
               {isVideoActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
           </button>
-          <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isAudioActive ? 'bg-green-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
+          <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 ${isAudioActive ? 'bg-green-500 text-white shadow-[0_4px_14px_rgba(34,197,94,0.45)]' : 'glass-panel text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
               {isAudioActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
           </button>
-          <button onClick={() => setShowDashboard(true)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
+          <button onClick={() => setShowDashboard(true)} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95" title="Dashboard"><Users className="w-4 h-4" /></button>
         </div>
 
 
@@ -839,9 +839,9 @@ const PDFMerged = () => {
         {/* Floating Top-Left Status + Menu */}
         <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
           <div className="relative">
-            <button onClick={() => setShowMenu(v => !v)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Menu"><Menu className="w-4 h-4" /></button>
+            <button onClick={() => setShowMenu(v => !v)} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95" title="Menu"><Menu className="w-4 h-4" /></button>
             {showMenu && (
-              <div className="absolute top-11 left-0 w-56 bg-toolbar border border-toolbar-foreground/15 rounded-xl shadow-xl overflow-hidden z-50">
+              <div className="glass-panel-strong animate-glass-in absolute top-11 left-0 w-56 rounded-xl overflow-hidden z-50">
                 <div className="p-2 space-y-1">
                   <button onClick={() => { setShowMenu(false); setShowHistory(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><History className="w-4 h-4 text-orange-400" /> Session History</button>
                   <button onClick={() => { setShowMenu(false); setShowDashboard(true); }} className="flex items-center gap-3 w-full px-3 py-2 text-sm text-toolbar-foreground hover:bg-toolbar-hover transition-colors rounded-md"><Users className="w-4 h-4 text-blue-400" /> Dashboard</button>
@@ -849,7 +849,7 @@ const PDFMerged = () => {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3 bg-toolbar shadow-sm border border-toolbar-foreground/15 rounded-xl px-4 py-2 pointer-events-auto">
+          <div className="glass-panel flex items-center gap-3 rounded-xl px-4 py-2 pointer-events-auto">
             <h1 className="text-sm font-bold text-toolbar-foreground tracking-tight flex items-center gap-2">
               <FileText className="h-4 w-4 text-primary"/>
               <span className="max-w-[150px] truncate">{pdfFileName || "PDF Viewer"}</span>
@@ -865,18 +865,18 @@ const PDFMerged = () => {
 
         {/* Top-Right Tools */}
         <div className="absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
-          <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full ${status === "connected" ? "bg-green-500" : "bg-red-400"}`} />
-          <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isVideoActive ? 'bg-blue-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
+          <span title={status === "connected" ? "Connected" : "Disconnected"} className={`w-2.5 h-2.5 rounded-full transition-colors ${status === "connected" ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.7)]" : "bg-red-400"}`} />
+          <button onClick={toggleVideo} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 ${isVideoActive ? 'bg-blue-500 text-white shadow-[0_4px_14px_rgba(59,130,246,0.45)]' : 'glass-panel text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isVideoActive ? "Disconnect Video" : "Join Video Call"}>
               {isVideoActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
           </button>
-          <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg border border-toolbar-foreground/20 transition-colors shadow-sm ${isAudioActive ? 'bg-green-500 text-white' : 'bg-toolbar text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
+          <button onClick={toggleAudio} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 ${isAudioActive ? 'bg-green-500 text-white shadow-[0_4px_14px_rgba(34,197,94,0.45)]' : 'glass-panel text-toolbar-foreground hover:bg-toolbar-hover'}`} title={isAudioActive ? "Disconnect Audio" : "Join Audio"}>
               {isAudioActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
           </button>
-          <button onClick={() => setShowDashboard(true)} className="w-9 h-9 flex items-center justify-center rounded-lg bg-toolbar border border-toolbar-foreground/20 text-toolbar-foreground hover:bg-toolbar-hover transition-colors shadow-sm" title="Dashboard"><Users className="w-4 h-4" /></button>
+          <button onClick={() => setShowDashboard(true)} className="glass-panel w-9 h-9 flex items-center justify-center rounded-lg text-toolbar-foreground hover:bg-toolbar-hover transition-all duration-150 hover:scale-105 active:scale-95" title="Dashboard"><Users className="w-4 h-4" /></button>
         </div>
 
       {/* Floating Top-Center UI */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 p-1 bg-toolbar shadow-md border border-toolbar-foreground/15 rounded-2xl pointer-events-auto">
+      <div className="glass-panel-strong absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 p-1 rounded-2xl pointer-events-auto">
         {/* Zoom */}
         <div className="flex items-center gap-0.5">
           <button
@@ -963,10 +963,10 @@ const PDFMerged = () => {
                 </div>
 
                 <div className="w-px h-6 bg-border mx-1" />
-                <button onClick={undoAnnotation} className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Undo">
+                <button onClick={undoAnnotation} className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-toolbar-hover transition-colors" title="Undo">
                   <Undo2 className="h-4 w-4" />
                 </button>
-                <button onClick={redoAnnotation} className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Redo">
+                <button onClick={redoAnnotation} className="p-2 rounded-xl text-toolbar-foreground/70 hover:bg-toolbar-hover transition-colors" title="Redo">
                   <Redo2 className="h-4 w-4" />
                 </button>
                 <button onClick={clearAnnotations} className="p-2 rounded-xl text-toolbar-foreground/70 hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Clear All">

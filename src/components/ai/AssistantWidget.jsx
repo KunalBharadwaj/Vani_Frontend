@@ -135,68 +135,91 @@ export const AssistantWidget = () => {
     }
   };
 
-  // Compute panel position based on available space around the button
+  // Compute panel position based on available space around the button.
+  // We anchor the panel by the edge NEAREST the button (bottom/right when the
+  // button is at the bottom-right) so the panel grows *away* from the button.
+  // Anchoring by top-left instead would push a short panel far from the button
+  // and leave a gap, because the panel's height is dynamic (grows with content).
   const computePanelStyle = () => {
     const PW = Math.min(384, window.innerWidth - 32);
     const PH = Math.min(window.innerHeight * 0.5, 520);
     const BW = 56, BH = 56, GAP = 12;
     const btnL = window.innerWidth  - btnPos.right - BW;
     const btnT = window.innerHeight - btnPos.bottom - BH;
+    // Prefer opening upward when there is room above the button, else downward.
     const openUp   = btnT >= PH + GAP || btnT >= window.innerHeight - btnT - BH;
+    // Open toward the left when the button sits close to the right edge.
     const openLeft = (window.innerWidth - btnL) < PW + GAP;
-    const top  = openUp   ? btnT - PH - GAP   : btnT + BH + GAP;
-    const left = openLeft ? btnL + BW - PW     : btnL;
-    return {
+
+    const style = {
       position: "fixed",
-      top:  Math.max(8, Math.min(window.innerHeight - PH - 8, top)),
-      left: Math.max(8, Math.min(window.innerWidth  - PW - 8, left)),
       width: PW, maxHeight: PH, zIndex: 50,
       display: "flex", flexDirection: "column",
     };
+
+    // Vertical: anchor the edge next to the button so the panel hugs it.
+    if (openUp) {
+      // Panel bottom sits GAP above the button's top edge.
+      style.bottom = Math.max(8, btnPos.bottom + BH + GAP);
+    } else {
+      // Panel top sits GAP below the button's bottom edge.
+      style.top = Math.max(8, Math.min(window.innerHeight - PH - 8, btnT + BH + GAP));
+    }
+
+    // Horizontal: align the panel's near edge with the button's.
+    if (openLeft) {
+      // Panel right edge aligns with the button's right edge.
+      style.right = Math.max(8, Math.min(window.innerWidth - PW - 8, btnPos.right));
+    } else {
+      // Panel left edge aligns with the button's left edge.
+      style.left = Math.max(8, Math.min(window.innerWidth - PW - 8, btnL));
+    }
+
+    return style;
   };
 
   return (
     <>
       {/* ── Chat Panel — smart-positioned relative to button ── */}
       {isOpen && (
-        <div style={computePanelStyle()} className="bg-background border border-border rounded-2xl shadow-2xl overflow-hidden">
+        <div style={computePanelStyle()} className="glass-panel-strong animate-glass-in rounded-2xl overflow-hidden">
 
           {/* Header */}
-          <div className="bg-primary p-4 flex justify-between items-center flex-shrink-0">
+          <div className="bg-gradient-to-r from-primary to-[hsl(var(--glow-violet))] p-4 flex justify-between items-center flex-shrink-0">
             <div className="flex items-center gap-2">
-              <GripHorizontal className="w-4 h-4 text-primary-foreground/60" />
+              <GripHorizontal className="w-4 h-4 text-white/60" />
               <div>
-                <h3 className="font-bold text-primary-foreground text-lg flex items-center gap-2">
+                <h3 className="font-bold text-white text-lg flex items-center gap-2">
                   <MessageSquare className="w-5 h-5" /> Chanakya
                 </h3>
-                <p className="text-primary-foreground/80 text-xs">AI Assistant</p>
+                <p className="text-white/80 text-xs">AI Assistant</p>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="text-primary-foreground/80 hover:text-primary-foreground transition-colors">
+            <button onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white transition-all duration-150 hover:scale-110">
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Alarm badge */}
           {alarms.length > 0 && (
-            <div className="flex-shrink-0 mx-3 mt-2 bg-yellow-500 text-white text-xs px-3 py-1 rounded-full flex items-center gap-1">
+            <div className="flex-shrink-0 mx-3 mt-2 bg-yellow-500 text-white text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-[0_2px_10px_rgba(234,179,8,0.4)]">
               <Bell size={12} /> {alarms.length} Active Reminder{alarms.length > 1 ? "s" : ""}
             </div>
           )}
 
           {/* Messages — scrollable */}
-          <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3 bg-secondary/20">
+          <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
             {messages.map((msg, idx) => (
-              <div key={idx} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
+              <div key={idx} className={`flex flex-col animate-glass-in ${msg.sender === "user" ? "items-end" : "items-start"}`}>
                 <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
                   msg.sender === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "bg-card border border-border text-card-foreground rounded-bl-sm"
+                    ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-br-sm shadow-[0_4px_14px_hsl(var(--primary)/0.3)]"
+                    : "glass-card text-foreground rounded-bl-sm"
                 }`}>{msg.text}</div>
                 {msg.hotels?.length > 0 && (
                   <div className="mt-2 w-[85%] space-y-2">
                     {msg.hotels.map((h, i) => (
-                      <div key={i} className="bg-card border border-border p-2 rounded-lg text-xs shadow-sm">
+                      <div key={i} className="glass-card p-2 rounded-lg text-xs">
                         <p className="font-bold">{h.name}</p>
                         <div className="flex justify-between text-muted-foreground mt-1">
                           <span>{h.price}</span><span>⭐ {h.rating}</span>
@@ -211,21 +234,21 @@ export const AssistantWidget = () => {
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-border bg-background flex-shrink-0">
+          <div className="p-3 border-t border-toolbar-foreground/10 flex-shrink-0">
             <div className="flex items-center gap-2">
               <input
                 type="text" value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && sendMessage()}
                 placeholder="Ask Chanakya..."
-                className="flex-1 bg-secondary text-secondary-foreground text-sm rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
+                className="flex-1 bg-toolbar-hover/60 text-foreground text-sm rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-150"
               />
               <button onClick={toggleListen}
-                className={`p-2 rounded-full transition-colors ${isListening ? "bg-red-500 text-white animate-pulse" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"}`}
+                className={`p-2 rounded-full transition-all duration-150 hover:scale-105 ${isListening ? "bg-red-500 text-white animate-pulse" : "bg-toolbar-hover/60 text-foreground hover:bg-toolbar-hover"}`}
                 title="Voice Input">
                 {isListening ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
               </button>
-              <button onClick={() => sendMessage()} className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors">
+              <button onClick={() => sendMessage()} className="p-2 bg-gradient-to-br from-primary to-[hsl(var(--glow-violet))] text-white rounded-full hover:scale-105 active:scale-95 transition-all duration-150 shadow-[0_4px_14px_hsl(var(--primary)/0.35)]">
                 <Send className="w-4 h-4" />
               </button>
             </div>
@@ -243,11 +266,11 @@ export const AssistantWidget = () => {
         onPointerUp={onBtnPointerUp}
         title={isOpen ? "Close · drag to move" : "Open Chanakya AI · drag to move"}
       >
-        <div className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105 ${isOpen ? "bg-primary/80" : "bg-primary"} text-primary-foreground`}>
+        <div className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 bg-gradient-to-br ${isOpen ? "from-primary/80 to-[hsl(var(--glow-violet))]/80" : "from-primary to-[hsl(var(--glow-violet))]"} text-white shadow-[0_8px_24px_hsl(var(--primary)/0.4)]`}>
           {isOpen ? <X className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
         </div>
         {alarms.length > 0 && !isOpen && (
-          <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+          <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-[0_2px_8px_rgba(234,179,8,0.6)]">
             {alarms.length}
           </div>
         )}
