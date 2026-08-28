@@ -14,7 +14,7 @@ import { ConnectionBanner } from "@/components/shared/ConnectionBanner";
 import { AuthContext } from "@/App";
 import { useTheme } from "@/context/ThemeContext";
 import { PDFDocument } from 'pdf-lib';
-import ReactMarkdown from 'react-markdown';
+import { MagicSearchModal } from "@/components/shared/MagicSearchModal";
 import { useContext } from "react";
 import { useMedia } from "@/context/MediaContext";
 import { rectFromPoints } from "@/lib/geometry";
@@ -748,35 +748,11 @@ export const PaintCanvas = () => {
       <RoomDashboard show={showDashboard} onClose={() => setShowDashboard(false)} roomState={roomState} isHost={isHost} onAssignOwner={(id) => sendWsMessage({ type: "assign_owner", targetUserId: id })} />
 
       {/* ── Magic Search Response Modal ───────────────────────────────────────── */}
-      {showMagicSearchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="glass-panel-strong animate-glass-in rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-toolbar-foreground/10">
-              <h2 className="text-lg font-semibold text-toolbar-foreground flex items-center gap-2">
-                <span className="text-blue-500">✨</span> Magic Search Results
-              </h2>
-              <button onClick={() => setShowMagicSearchModal(false)} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto prose prose-sm dark:prose-invert max-w-none text-toolbar-foreground">
-              {magicSearchResponse ? (
-                <ReactMarkdown>{magicSearchResponse}</ReactMarkdown>
-              ) : (
-                <p>No response generated.</p>
-              )}
-            </div>
-            <div className="p-4 border-t border-toolbar-foreground/10 flex justify-end">
-              <button
-                onClick={() => setShowMagicSearchModal(false)}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-150 hover:scale-105 active:scale-95 text-sm font-medium"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MagicSearchModal
+        open={showMagicSearchModal}
+        response={magicSearchResponse}
+        onClose={() => setShowMagicSearchModal(false)}
+      />
 
     </div>
   );
