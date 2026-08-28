@@ -70,42 +70,47 @@ const AuthWrapper = ({ children }) => {
   }, [token]);
 
   useEffect(() => {
-    // A-1: Check backend for valid cookie if no URL token exists
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vani-backend-mjsl.onrender.com";
+
+    // Exchange the httpOnly auth cookie for the JWT the WebSocket needs.
+    const fetchTokenFromCookie = () =>
+      fetch(`${backendUrl}/api/auth/me`, { credentials: "include" })
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data?.token) setToken(data.token); })
+        .catch(() => { });
+
+    // #3: The JWT is no longer passed in the URL. On return from OAuth we get
+    // back only the CSRF nonce; we verify it, then read the token from the
+    // httpOnly cookie. (urlToken kept as a transition fallback for older backends.)
     const urlToken = searchParams.get("token");
     const urlNonce = searchParams.get("nonce");
+    const returningFromOAuth = searchParams.has("nonce") || searchParams.has("token");
 
-    if (urlToken) {
-      // A-3: CSRF Defense — verify nonce against sessionStorage
+    if (returningFromOAuth) {
+      // A-3: CSRF defence — the nonce must match the one we stored before redirect.
       const savedNonce = sessionStorage.getItem("oauth_nonce");
-      if (savedNonce && urlNonce === savedNonce) {
-        setToken(urlToken);
-        sessionStorage.removeItem("oauth_nonce");
-      } else {
-        console.error("[Vani] Auth failed: CSRF nonce mismatch or missing");
-      }
+      const nonceOk = savedNonce && urlNonce === savedNonce;
+      sessionStorage.removeItem("oauth_nonce");
       searchParams.delete("token");
       searchParams.delete("nonce");
       setSearchParams(searchParams, { replace: true });
-      setLoading(false);
+
+      if (!nonceOk) {
+        console.error("[Vani] Auth failed: CSRF nonce mismatch or missing");
+        setLoading(false);
+      } else if (urlToken) {
+        setToken(urlToken); // legacy path: backend still sent a token in the URL
+        setLoading(false);
+      } else {
+        fetchTokenFromCookie().finally(() => setLoading(false));
+      }
       return;
     }
 
     if (token) return; // Skip network check if we already have the token
 
-    // Try silent auth via httpOnly cookie
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || "https://vani-backend-mjsl.onrender.com";
-    fetch(`${backendUrl}/api/auth/me`, { credentials: "omit" }) // We will use 'include' when properly set up, but backend runs on port 10000. Actually we must use 'include'.
-      .catch(() => null) // Ignore fetch failures (handled implicitly)
-      .finally(() => {
-        // Correct fetch with credentials
-        fetch(`${backendUrl}/api/auth/me`, { credentials: "include" })
-          .then(res => res.ok ? res.json() : null)
-          .then(data => {
-            if (data?.token) setToken(data.token);
-          })
-          .catch(() => { })
-          .finally(() => setLoading(false));
-      });
+    // Silent auth: reuse an existing httpOnly cookie session if one is present.
+    fetchTokenFromCookie().finally(() => setLoading(false));
   }, [searchParams, setSearchParams, token]);
 
   if (loading) return <div style={{ padding: 20 }}>Authenticating...</div>;
